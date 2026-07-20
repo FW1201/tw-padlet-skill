@@ -1,0 +1,12 @@
+{
+  "title": "光合作用探究討論板",
+  "description": "分組探究：提出問題、假設與觀察紀錄",
+  "format": "columns",
+  "sections": ["我的問題", "我的假設", "觀察紀錄"],
+  "seedPosts": [
+    { "subject": "示範：我的問題", "body": "為什麼水蘊草在光下會冒泡泡？", "section": "我的問題", "color": "blue" },
+    { "subject": "示範：我的假設", "body": "泡泡是氧氣，光越強泡泡越多。", "section": "我的假設", "color": "green" },
+    { "subject": "示範：觀察紀錄", "body": "檯燈距離 10cm：每分鐘 25 個泡泡。", "section": "觀察紀錄" },
+    { "subject": "延伸資源", "body": "光合作用動畫影片", "media": { "kind": "youtube", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "title": "光合作用動畫" }, "section": "我的問題" }
+  ]
+}
