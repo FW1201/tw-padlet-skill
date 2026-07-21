@@ -1,5 +1,7 @@
 # 功能擴充構想（2026-07-22 起兩輪 live 驗證觀察，供下一輪升級參考）
 
+> ✅ **v0.2.0 已完成**：新增 `preflight.mjs`（依賴/API key/登入前置檢查）與 `run.mjs`（一鍵 prepare 建板+種貼文 / deliver 設權限）。匯出格式（#2 CSV/Excel/image）仍待驗證——本輪因帳號在 3 板上限且現有為使用者真實個人看板，未動用真實看板做匯出探索，維持 `export-board.mjs` 現狀（PDF 確認、其餘 provisional）。
+
 ## 高價值
 
 1. **AI 配方系統（第二輪已完整驗證，比純 API 豐富很多）**

@@ -15,6 +15,17 @@ cd <skill-dir> && npm install && npx playwright install chromium
 
 只在 `node_modules/` 不存在時執行。
 
+## 一鍵流程（推薦）
+
+先 `node scripts/preflight.mjs` 確認依賴、API key 有無、以及（無 key 時）老師是否已登入。再用串接器一次跑完，中間只停在「訪客權限確認」（對外可見度變更）：
+
+```bash
+node scripts/run.mjs board.json --stage prepare                       # 建看板+種貼文，回傳 boardUrl
+node scripts/run.mjs board.json --stage deliver --board-url <url> --visitor commenter   # 設權限
+```
+
+建看板一律走 Playwright（REST 無法建空白板）；種貼文預設走 Playwright。下方為細部控制與雙路徑決策。
+
 ## 路徑決策（每次任務先做）
 
 1. 檢查是否已設定 key（**只檢查存在與否，絕不讀出、echo 或顯示內容**）：

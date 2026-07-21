@@ -1,6 +1,6 @@
 {
   "name": "tw-padlet-skill",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Agent skill: create, seed and manage Padlet boards via official API (paid plans) or Playwright assist.",
   "type": "module",
   "license": "MIT",
