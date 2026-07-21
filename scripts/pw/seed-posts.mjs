@@ -1,7 +1,18 @@
 #!/usr/bin/env node
 // Seed posts into a board via the UI (the no-API-key path).
+// Live-verified 2026-07-22 (zh-TW account):
+//  - Per-section "add post" button accessible name is "在這個區段新增貼文"
+//    ("add new post in this section") — clicking it opens a floating composer
+//    scoped to that section (bottom-right), pre-selecting the section.
+//  - Composer field placeholders are Chinese: subject = "主題", body =
+//    "寫點美好的內容...". The confirm button reads "發布" (Publish) — note
+//    this differs from the section's OWN trigger button, which is externally
+//    labelled "張貼" (Post) at the bottom-right of the whole board.
+//  - The composer footer shows a "§ <section name>" selector confirming which
+//    section the post will land in — so posts DO land in the correct section
+//    when triggered from that section's own add-post button.
 // Usage: node scripts/pw/seed-posts.mjs <board.json> --board-url <url>
-// Flow manifest: references/flow-seed-posts.md
+// Flow manifest: references/flow-create-board.md
 import { readFile } from "node:fs/promises";
 import { Board } from "../lib/models.mjs";
 import {
@@ -47,31 +58,35 @@ try {
 
   for (const post of board.seedPosts) {
     try {
-      // Padlet: double-click empty area or the + button opens the composer.
-      const plus = page
-        .getByRole("button", { name: /add|新增|\+/i })
-        .first();
-      await plus.waitFor({ state: "visible", timeout: 10000 });
-      await plus.click();
+      // Scope the add-post trigger to the requested section when possible so
+      // the post lands in the right column; fall back to the first trigger
+      // found (board-wide "張貼" button) if the section can't be located.
+      let trigger;
+      if (post.section) {
+        const sectionHeading = page.getByRole("heading", { name: post.section }).first();
+        if ((await sectionHeading.count()) > 0) {
+          const sectionBox = sectionHeading.locator("xpath=ancestor::*[self::div][1]");
+          trigger = sectionBox.getByRole("button", { name: /新增貼文|add.*post/i }).first();
+        }
+      }
+      if (!trigger || (await trigger.count()) === 0) {
+        trigger = page.getByRole("button", { name: /新增貼文|add.*post|^張貼$|^post$/i }).first();
+      }
+      await trigger.waitFor({ state: "visible", timeout: 10000 });
+      await trigger.click();
 
-      const subjectInput = page
-        .locator('[placeholder*="subject" i], [placeholder*="title" i], [data-testid*="subject"]')
-        .first();
+      const subjectInput = page.getByPlaceholder(/^主題$|^subject$/i).first();
       if (post.subject) {
         await subjectInput.waitFor({ state: "visible", timeout: 8000 });
         await subjectInput.fill(post.subject);
       }
-      const bodyInput = page
-        .locator('[placeholder*="write" i], [contenteditable="true"][class*="body"], [data-testid*="body"]')
-        .first();
+      const bodyInput = page.getByPlaceholder(/寫點美好的內容|write something/i).first();
       if (post.body) {
         await bodyInput.waitFor({ state: "visible", timeout: 8000 });
         await bodyInput.fill(post.body);
       }
-      // Publish the post (composer confirm).
-      const publish = page
-        .getByRole("button", { name: /publish|post|發布|張貼/i })
-        .first();
+
+      const publish = page.getByRole("button", { name: /^發布$|^publish$/i }).first();
       await publish.waitFor({ state: "visible", timeout: 8000 });
       await publish.click();
       await page.waitForTimeout(800);
@@ -91,11 +106,9 @@ try {
     }
   }
 
-  const notes = [
-    "UI 種子路徑不支援自動指定欄位與附件；貼文集中貼在預設位置，請老師拖曳分欄。",
-  ];
+  const notes = [];
   if (board.seedPosts.some((p) => p.media)) {
-    notes.push("含 media 的貼文：附件連結已寫入內文末，或請人工補上。");
+    notes.push("此路徑不支援自動上傳附件；含 media 的貼文請人工補上圖片/連結。");
   }
   const success = added > 0 || board.seedPosts.length === 0;
   if (success) {

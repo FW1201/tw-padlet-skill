@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 // Export a board (PDF/CSV/Excel/image) — not possible via the official API.
+// Live-verified 2026-07-22: the export entry is behind the SETTINGS (gear)
+// icon -> "分享此看板"/"Share this board" panel, which has a "匯出 PDF"/
+// "Export PDF" tab at the top alongside 複製連結/QR碼/分組討論室/嵌入.
+// Only the PDF tab was confirmed to exist in that panel; CSV/Excel/image
+// export entry points are UNVERIFIED (kept as fallback text-match candidates
+// below — may live elsewhere, e.g. a board content/kebab menu).
 // Usage: node scripts/pw/export-board.mjs --board-url <url> --format pdf|csv|xlsx|image [--out-dir DIR]
 // Flow manifest: references/flow-export.md
 import path from "node:path";
@@ -42,16 +48,18 @@ try {
     process.exit(1);
   }
 
-  await clickFirst(
-    page,
-    [(p) => p.getByRole("button", { name: /^share|分享/i })],
-    "Share button",
-    15000,
-  );
+  await page.getByRole("button", { name: /settings|設定/i }).first().click({ timeout: 10000 }).catch(async () => {
+    await page.locator('[class*="settings" i], [aria-label*="settings" i]').first().click({ timeout: 8000 });
+  });
+  await page.getByText(/^分享此看板$|^share this board$/i).waitFor({ state: "visible", timeout: 10000 });
+
   const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
   await clickFirst(
     page,
-    [(p) => p.getByText(new RegExp(`export.*${LABEL[format].source}|save as.*${LABEL[format].source}`, "i")), (p) => p.getByText(LABEL[format])],
+    [
+      (p) => p.getByText(new RegExp(`匯出.*${LABEL[format].source}|export.*${LABEL[format].source}`, "i")),
+      (p) => p.getByText(LABEL[format]),
+    ],
     `export ${format}`,
     15000,
   );

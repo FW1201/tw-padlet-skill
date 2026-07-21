@@ -28,23 +28,23 @@ cd <skill-dir> && npm install && npx playwright install chromium
 |---|---|---|
 | 讀看板/貼文 | `api/get-board.mjs`、`api/list-posts.mjs` | 直接開 URL 看 |
 | 建看板 | `api/create-ai-board.mjs`（僅 AI 生成，無空白板端點） | `pw/create-board.mjs`（可指定版面+欄位）|
-| 種貼文 | `api/seed-board.mjs`（支援欄位對應、附件、顏色）| `pw/seed-posts.mjs`（不分欄、無附件，事後拖曳）|
+| 種貼文 | `api/seed-board.mjs`（支援欄位對應、附件、顏色）| `pw/seed-posts.mjs`（可分欄，但無附件/顏色）|
 | 加單篇貼文 | `api/add-post.mjs` | `pw/seed-posts.mjs` |
 | 訪客權限/分享連結 | ❌ API 做不到 | `pw/set-sharing.mjs` |
 | 匯出 PDF/CSV/Excel | ❌ API 做不到 | `pw/export-board.mjs` |
 
 **推薦的混合鏈**（API 無空白板端點，建板一律走 pw）：`pw/create-board.mjs` 建板 → 種貼文（**有 key 用 `api/seed-board.mjs`，品質最好**；無 key 用 `pw/seed-posts.mjs`）→ `pw/set-sharing.mjs` 設權限。
 
-⚠️ **走 pw 種貼文前必須先向老師預告品質折損**：不分欄（需事後拖曳）、貼文顏色遺失、media 附件不會變嵌入卡片。老師在意就建議申請 key。
+⚠️ **走 pw 種貼文前先向老師預告品質折損**：貼文顏色遺失、media 附件不會變嵌入卡片（只會留純網址）。老師在意就建議申請 key。
 
-`--visitor` 對應：`reader`＝只能看｜`commenter`＝可留言、不可新增貼文｜`writer`＝可新增貼文。
+`--visitor` 對應官方 5 個選項：`no_access`＝僅共同作業者可看｜`reader`＝只能看｜`commenter`＝可留言、不可新增貼文｜`author`＝可新增貼文（預設值）｜`approver`＝可撰寫/編輯/核准貼文。
 
 ## 工作流程
 
 1. Playwright 前置：`node scripts/pw/login.mjs`（timeout ≥360000ms；老師本人登入）。
-2. 建板前先在對話中與老師確認：標題、版面（columns/wall/grid/stream/canvas）、欄位名稱。
-3. 種貼文：`node scripts/api/seed-board.mjs board.json --board-id <id>`。輸出 `added/failed/errors/notes`——**unmatched 欄位與失敗貼文一定要轉述**。
-4. 權限（外部寫入，先確認）：`node scripts/pw/set-sharing.mjs --board-url <url> --visitor commenter`。
+2. 建板前先在對話中與老師確認：標題、版面、欄位名稱。**版面官方共 9 種**：schema 對應 5 種（wall/grid/columns/stream/canvas，其中 `grid`→「表格」、`canvas`→「自由格式」，非字面「網格」「畫布」）+ 額外 4 種可用中文字面值直接指定（story/timeline/list/map）。
+3. 種貼文：有 key 用 `node scripts/api/seed-board.mjs board.json --board-id <id>`；無 key 用 `node scripts/pw/seed-posts.mjs board.json --board-url <url>`。輸出 `added/failed/errors/notes`——**unmatched 欄位與失敗貼文一定要轉述**。
+4. 權限（外部寫入，先確認）：`node scripts/pw/set-sharing.mjs --board-url <url> --visitor commenter`（在齒輪設定裡，不是頂部「分享」按鈕——那個只有複製連結/QR code）。
 5. 最終交付：分享連結（`shareUrl`）＋ 貼文統計。
 
 ## 規則
