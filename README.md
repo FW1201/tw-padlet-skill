@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.png" width="88" alt="Padlet logo"></p>
+
 # tw-padlet-skill
 
 > ⚠️ **非官方工具**：本套件的 REST 路徑使用 Padlet **官方公開 API**（需付費方案的 API key，完全合規）；Playwright 路徑則以自動操作官方網頁 UI 補 API 缺口（建空白看板、訪客權限、匯出），該路徑**非**官方認可整合、受 Padlet 服務條款約束。請以老師本人帳號、由本人完成登入，操作自己的內容，風險自負。有官方 API 可用的操作一律優先 API。
@@ -62,6 +64,7 @@ mkdir -p ~/.tw-edu-skills/padlet && echo '{"apiKey":"..."}' > ~/.tw-edu-skills/p
 
 - API 路徑：官方公開 API，完全合規；金鑰只在腳本內部讀取，絕不 echo/輸出。
 - Playwright 路徑：可見瀏覽器、老師本人帳號與內容；登入/MFA 親自完成；外部寫入（建板、改權限）前 agent 需在對話中確認；選擇器失敗零重試、截圖、交還人工；cookies 只存本機 Chromium profile。
+- **Playwright 路徑需在本機、有螢幕的互動式 agent session 執行**；雲端背景任務/遠端無頭 sandbox/CI 無法顯示瀏覽器視窗，不適用（有 API key 的 REST 路徑不受此限制）。
 
 ## License
 

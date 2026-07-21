@@ -15,6 +15,8 @@ cd <skill-dir> && npm install && npx playwright install chromium
 
 只在 `node_modules/` 不存在時執行。
 
+⚠️ **執行環境**：無 API key 時的 Playwright 路徑開啟**可見（headed）瀏覽器**供老師登入，需在**本機、有螢幕的互動式 agent session**執行（Claude Code CLI/Desktop、Codex CLI、OpenCode 終端機皆可）。**雲端背景任務/遠端無頭 sandbox/CI（如 Codex Cloud tasks）無法顯示瀏覽器視窗，登入步驟會卡住或失敗**——請改在本機互動式 session 執行；有 API key 的 REST 路徑不受此限制。
+
 ## 一鍵流程（推薦）
 
 先 `node scripts/preflight.mjs` 確認依賴、API key 有無、以及（無 key 時）老師是否已登入。再用串接器一次跑完，中間只停在「訪客權限確認」（對外可見度變更）：
