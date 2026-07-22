@@ -1,34 +1,16 @@
-# 測試情境（superpowers:writing-skills TDD）
+# 測試情境（API 正確性——2026-07-23 大型縮減後改寫）
 
-## RED baseline（2026-07-21，無 skill）
+本文件原本記錄雙路徑（API + Playwright）的 RED/GREEN/REFACTOR TDD 過程，含 pw 建板/權限/匯出的規劃情境。Playwright 路徑已整個移除（見 README「為什麼沒有瀏覽器自動化」），歷史脈絡保留在 git log，不在此重述。
 
-情境：「用 board.json 在 Padlet 建三欄看板、種 4 篇貼文、訪客可留言不可新增、給我分享連結。」
+現在 `scripts/api/*.mjs` + `scripts/lib/padlet-client.mjs` 是唯一產品面。測試情境改為關注 **API client 對官方規則的正確性**，可執行測試見 `tests/padlet-client.test.mjs`（`npm test` 執行，node:test + node:assert，用 mock fetch，無需真實網路/帳號）。
 
-觀察到的 baseline 失敗（general-purpose subagent，無 skill、無憑證）：
-1. 花 15 次工具呼叫（含打真實 API 收 401、抓 OpenAPI 文件）才確認 API 能力邊界——skill 應把這些知識內建。
-2. 原以為有 `POST /v1/boards` 可建板，被文件推翻；也發現無建 section 端點。
-3. 訪客權限（Commenter）確認 API 完全做不到，只能請老師手動。
-4. 最終只能產出「請老師自己建板+申請 key」的半自動腳本。
+## 涵蓋情境
 
-→ skill 必須提供：API 能力矩陣與雙路徑決策、現成 client（含 section label→id 對應、部分失敗回報）、pw 補位（建板/權限/匯出）。
+1. **空字串→null 轉換**（本輪修的真實 bug）：`buildPostPayload` 的 `body`/`subject` 為空字串時要轉成 `null`——Padlet 官方文件記載字串欄位不可用空字串，先前有這條規則但未真正實作。非空字串維持不變。
+2. **attachment 欄位組裝**：`media` 存在時要正確組出 `{url, caption}` 形狀。
+3. **輪詢容錯**（本輪修的真實 bug）：`createAiBoardAndWait` 單次網路抖動（fetch 拋錯）不應中止整個等待，應繼續重試；只有明確拿到 `status: "failed"` 才立即中止（不耗盡剩餘重試次數）。
+4. **前置檢查**：`preflight.mjs` 純檢查 `PADLET_API_KEY`/config.json 是否存在，`ok:false` 時不可洩漏任何 key 內容。
 
-## GREEN 驗證情境（安裝 skill 後）
+## 何時要補測試
 
-S1（路徑決策）：無 key 環境，「幫我建這個看板」→ 期望：檢查 key（不讀內容）→ 問老師有無 key → 說明兩路徑並依答案選擇。
-S2（API seed）：有 key + board-id →期望：跑 api/seed-board.mjs，轉述 added/failed/unmatched notes。
-S3（負向）：壞 board.json / 無 key 直接跑 API 腳本 → 期望：轉述 hint（引導設 key 或改 pw 路徑），無 stack trace、key 永不出現在輸出。
-
-## GREEN 結果（2026-07-21）
-
-- S1：PASS —— 正確做存在性檢查（未讀內容）、詢問老師、給出雙路徑建議與推薦組合。
-- S3：PASS —— MissingCredential hint 正確轉述；壞 JSON 得 schema 提示。
-- S2 / pw 腳本：需真實 key 與帳號，列入 live 驗證清單（flow-*.md last-verified: PENDING）。
-
-## REFACTOR（依 GREEN 回饋修補，2026-07-21）
-
-1. 「推薦組合（有 key）」改寫為「推薦的混合鏈」，明講建板一律走 pw（API 無空白板端點）。
-2. SKILL.md 附安全的 key 存在性檢查指令範例（printenv/ls），避免各 agent 自己發明寫法誤觸 danger-guard hook。
-3. seed-board.mjs 的 zod 錯誤改出專屬 hint（點名壞欄位），不再與 board-id/網路混在一起。
-4. 常見錯誤表補「schema 驗證失敗」列＋「驗證先於憑證檢查」說明。
-5. pw 種貼文的品質折損（不分欄/無顏色/無嵌入附件）升級為「必須先向老師預告」的硬規則；補 `--visitor` 三值中文對應。
-6. 觸發測試需在全新 session 驗證。
+`padlet-client.mjs` 新增任何官方文件記載但先前未實作的規則時，`padlet-client.test.mjs` 至少要補一組「規則生效」的測試——本輪的空字串轉換就是這類「知道規則但沒寫進程式碼」的落差，容易在下一次修改時又漏掉。

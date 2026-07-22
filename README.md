@@ -2,57 +2,50 @@
 
 # tw-padlet-skill
 
-> ⚠️ **非官方工具**：本套件的 REST 路徑使用 Padlet **官方公開 API**（需付費方案的 API key，完全合規）；Playwright 路徑則以自動操作官方網頁 UI 補 API 缺口（建空白看板、訪客權限、匯出），該路徑**非**官方認可整合、受 Padlet 服務條款約束。請以老師本人帳號、由本人完成登入，操作自己的內容，風險自負。有官方 API 可用的操作一律優先 API。
+> ⚠️ **非官方工具**：本套件**不是** Padlet 官方產品。它使用 Padlet **官方公開 REST API**（需付費方案的 API key，完全合規），不做任何瀏覽器自動化或登入。
 
-台灣 K-12 教師用的 Padlet agent skill：**雙路徑**——有 API key 走 REST，沒有則以 Playwright 操作網頁。一句話就能把貼文 JSON 一路做到「建看板 → 種貼文 → 設定訪客權限 → 回傳分享連結」。
+台灣 K-12 教師用的 Padlet agent skill：只走官方 REST API，一句話把貼文 JSON 種進 Padlet 看板（既有看板或 AI 配方新建）。
 
 自 [edu-agent-kit](https://github.com/FW1201/edu-agent-kit) 的 Padlet adapter 獨立而來（來源 commit `a7eaa0f`）。
 
 ## 這套 skill 能做什麼
 
-老師把看板內容（標題、版面、欄位、種子貼文）給 agent，agent 就能：建立看板 → 種入貼文 → 設定訪客權限（讀者/留言者/作者…）→ 回傳分享連結。唯二人工點：**登入**（無 API key 時）、**訪客權限確認**（對外可見度變更）。
+老師把看板內容（種子貼文）給 agent，agent 透過官方 API 種入既有看板（老師先在 padlet.com 手動建好、給 board id），或用 AI 配方直接生成一個新看板再種貼文。
 
-## 快速上手（一鍵流程，推薦）
+⚠️ **能力邊界**：Padlet 官方 API 沒有「建立指定版面/自訂分欄名稱的空白看板」端點——這是 Playwright 才做得到的事，本輪已拿掉。同樣沒有 API 的還有訪客權限設定與匯出，這些請老師直接在 padlet.com 手動處理。
+
+## 快速上手
 
 ```bash
-cd <skill-dir> && npm install                           # 首次
-npm run browser:start                                   # 啟動教育平台專用「正常 Chrome」
-npm run browser:status                                  # 確認 CDP 已可連線
-node scripts/pw/login.mjs                               # 第一次開登入頁後立即 handoff
-# 在保持開啟的正常 Chrome 完成 Google 登入／MFA，然後：
-node scripts/pw/login.mjs && node scripts/preflight.mjs
-node scripts/run.mjs board.json --stage prepare         # 建看板+種貼文，回傳 boardUrl
-# ⇧ agent 跟老師確認訪客權限後：
-node scripts/run.mjs board.json --stage deliver \
-  --board-url <boardUrl> --visitor commenter            # 設定權限，回傳分享連結
+cd <skill-dir> && npm install                                    # 首次
+export PADLET_API_KEY=...                                        # 見下方申請方式
+node scripts/preflight.mjs                                       # 確認 key 已設定
+node scripts/run.mjs board.json --board-id <既有看板id>
+# 或用 AI 配方直接新建看板：
+node scripts/run.mjs board.json --ai-prompt "討論光合作用對氣候的影響"
 ```
-
-> `board.json` 欄位：`title`、`format`（版面）、`sections[]`、`seedPosts[]`。建看板一律走 Playwright（REST 無法建空白板）；種貼文預設走 Playwright，有 key 時亦可用 `api/seed-board.mjs --board-id`。
 
 ## 自然指令範例
 
 | 老師說 | 觸發 |
 |---|---|
-| 「把這些討論題種到一個欄位看板、開放學生留言」 | `run.mjs … --visitor commenter` |
-| 「用 AI 幫我生一個討論看板」 | `api/create-ai-board.mjs`（需 API key） |
-| 「把這個看板匯出成 PDF」 | `pw/export-board.mjs --format pdf` |
+| 「把這些討論題種到我這個看板」 | `run.mjs board.json --board-id <id>` |
+| 「用 AI 幫我生一個討論看板並種入這些內容」 | `run.mjs board.json --ai-prompt "..."` |
+| 「這個看板現在有哪些貼文？」 | `api/list-posts.mjs <board-id>`（唯讀） |
 
 ## 功能總覽
 
-| 腳本 | 路徑 | 用途 |
-|---|---|---|
-| `scripts/preflight.mjs` | — | 前置檢查（依賴/API key/登入） |
-| `scripts/run.mjs` | PW | **一鍵串接器**（prepare 建板+種貼文 / deliver 設權限） |
-| `api/get-board.mjs` / `list-posts.mjs` | API | 讀看板 / 列貼文 |
-| `api/create-ai-board.mjs` | API | AI 生成看板（官方唯一建板端點，非同步輪詢） |
-| `api/add-post.mjs` / `seed-board.mjs` | API | 加單篇 / 批次種貼文（需 `--board-id`） |
-| `pw/login.mjs` | PW | 可見視窗登入 |
-| `pw/create-board.mjs` | PW | 建空白看板（版面+欄位） |
-| `pw/seed-posts.mjs` | PW | 無 key 的種貼文路徑 |
-| `pw/set-sharing.mjs` | PW | 訪客權限 + 分享連結 |
-| `pw/export-board.mjs` | PW | 匯出（**PDF 已確認**；CSV/Excel/圖片入口尚未 live 驗證，屬 provisional） |
+| 腳本 | 用途 | 輸入 | 輸出 |
+|---|---|---|---|
+| `scripts/preflight.mjs` | 前置檢查（API key 是否已設定） | — | `{ok, apiKey}` |
+| `scripts/run.mjs` | 一鍵種貼文（既有看板或 AI 配方新建） | `board.json --board-id\|--ai-prompt` | boardId/url/added/failed |
+| `scripts/api/get-board.mjs` | 讀看板（含欄位、貼文數） | `<board-id>` | 看板資料 |
+| `scripts/api/list-posts.mjs` | 列貼文 | `<board-id>` | 貼文陣列 |
+| `scripts/api/create-ai-board.mjs` | AI 生成看板（唯一 API 建板端點） | `--prompt` | boardId/url |
+| `scripts/api/add-post.mjs` | 加單篇貼文 | `<board-id> post.json` | postId/url |
+| `scripts/api/seed-board.mjs` | 批次種貼文（`run.mjs` 內部呼叫） | `board.json` | added/failed/notes |
 
-## API key（可選）
+## API key（必要）
 
 至 [padlet.com/dashboard/settings/developers](https://padlet.com/dashboard/settings/developers) 申請（需付費方案），然後：
 
@@ -62,36 +55,9 @@ export PADLET_API_KEY=...
 mkdir -p ~/.tw-edu-skills/padlet && echo '{"apiKey":"..."}' > ~/.tw-edu-skills/padlet/config.json && chmod 600 ~/.tw-edu-skills/padlet/config.json
 ```
 
-## 自動化邊界（ToS 風險控管）
+## 為什麼沒有瀏覽器自動化
 
-- API 路徑：官方公開 API，完全合規；金鑰只在腳本內部讀取，絕不 echo/輸出。
-- Playwright 路徑：使用教育平台專用正常 Chrome；登入/MFA 親自完成；外部寫入（建板、改權限）前 agent 需在對話中確認；選擇器失敗零重試、截圖、交還人工；cookies 不匯出、不複製。
-- **Playwright 路徑需在本機、有螢幕的互動式 agent session 執行**；雲端背景任務/遠端無頭 sandbox/CI 無法顯示瀏覽器視窗，不適用（有 API key 的 REST 路徑不受此限制）。
-
-## Browser Core v2：正常 Chrome + CDP
-
-Playwright 預設透過 CDP 連接使用者啟動的教育平台專用正常 Chrome；Google OAuth、
-MFA、CAPTCHA 都在 Skill detach 後由老師本人完成。Flows still use a URL + DOM
-authentication check, condition-based waits, run-state journals, classified
-selector failures, and local redacted diagnostics. Sharing changes require a
-read-back confirmation; an ambiguous external write returns `resumeUrl` and
-must not be retried automatically.
-
-環境變數：`TW_EDU_CDP_URL` 可指定 endpoint；`TW_EDU_CHROME_PATH` 可指定 Chrome；
-只有非 Google 帳號的明確需求才可設定 `TW_EDU_BROWSER_MODE=playwright`。
-
-Run local checks with:
-
-```bash
-npm test
-npm run check:browser-core
-```
-
-Validation boundaries and the latest readonly canary result are recorded in
-`docs/browser-core-validation.md`.
-
-Computer Use is a manual fallback for login/MFA/CAPTCHA or selector drift; it
-does not replace deterministic success evidence or external-write gates.
+這套 skill 原本是雙路徑：有 API key 走官方 API，沒有則以 Playwright 操作網頁補 API 缺口（建空白看板、訪客權限、匯出）。Playwright 路徑一樣受「Google OAuth 拒絕自動化瀏覽器、選擇器驅動的 UI 自動化不穩定」的問題所苦。現在只保留完全合規、不需要瀏覽器的官方 API 路徑；API 做不到的事（建自訂版面空白看板、訪客權限、匯出）明確列為能力邊界，交給老師手動處理，不再嘗試用瀏覽器自動化補位。
 
 ## License
 

@@ -25,7 +25,7 @@ try {
   out({
     ok: false,
     error: String(err?.message ?? err),
-    hint: err instanceof MissingCredentialError ? err.message : "AI 建板逾時或失敗；可稍後重試一次，或改用 scripts/pw/create-board.mjs。",
+    hint: err instanceof MissingCredentialError ? err.message : "AI 建板逾時或失敗；可稍後重試一次。若需要指定版面/分欄的空白看板，Padlet API 沒有對應端點，請老師直接在 padlet.com 手動建立。",
   });
   process.exit(1);
 }

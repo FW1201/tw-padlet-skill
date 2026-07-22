@@ -1,32 +1,25 @@
 #!/usr/bin/env node
-// One-command orchestrator for the Padlet chain. Sequences the existing
-// single-purpose scripts and stops at the FIRST failure — it does not
-// re-implement any step. Board creation always uses Playwright (the REST API
-// cannot create a blank board); seeding uses REST when an API key is present,
-// otherwise Playwright. Two stages keep the one intentional human checkpoint
-// (confirming the visitor permission, an external visibility change) as a
-// single interaction:
+// Thin one-command entry point for the API-only Padlet chain — kept mainly
+// for entry-point consistency with the other three tw-*-skill repos (all now
+// reduced to "one script, no login"). scripts/api/seed-board.mjs already
+// fully implements create(optional)+seed as a single call, so this wrapper
+// adds no new logic — it just gives Padlet the same `node scripts/run.mjs
+// <input>` shape teachers/agents see elsewhere.
 //
-//   node scripts/run.mjs <board.json> --stage prepare
-//     create-board (Playwright, needs login) -> seed-posts (REST if key, else
-//     Playwright). Prints boardUrl + a summary. Permission NOT changed yet
-//     (board defaults to its creation privacy).
+// Usage:
+//   node scripts/run.mjs board.json --board-id <existing-board-id>
+//   node scripts/run.mjs board.json --ai-prompt "..." [--role teacher]
 //
-//   node scripts/run.mjs <board.json> --stage deliver --board-url <url> \
-//     --visitor no_access|reader|commenter|author|approver
-//     set-sharing. Prints the final share state.
-//
-// board.json fields: title, format (layout), sections[], seedPosts[]. The only
-// manual steps are login (preflight) and confirming the visitor permission.
-import { promises as fs } from "node:fs";
-import path from "node:path";
+// Seeding posts onto a board (existing or freshly AI-generated) is an
+// external write visible to anyone with the board link — the printed summary
+// (added/failed/unmatchedLabels) is the confirmation checkpoint; review it
+// before treating the board as finished. Visitor permission and export still
+// have no API equivalent — direct the teacher to padlet.com for those.
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createRunState, inputFingerprint } from "./lib/session.mjs";
-import { createTrackedRunner } from "./lib/browser-core/orchestrator.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PLATFORM = "padlet";
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -35,9 +28,6 @@ function arg(name) {
 function out(obj) {
   console.log(JSON.stringify(obj));
 }
-
-let runState;
-const runTracked = createTrackedRunner({ here: HERE, platform: PLATFORM, getState: () => runState });
 
 function runScript(relPath, args) {
   const res = spawnSync(process.execPath, [path.join(HERE, relPath), ...args], {
@@ -65,90 +55,29 @@ function runScript(relPath, args) {
 }
 
 const boardPath = process.argv[2];
-const stage = arg("stage");
-if (!boardPath || !["prepare", "deliver"].includes(stage)) {
+const boardId = arg("board-id");
+const aiPrompt = arg("ai-prompt");
+const role = arg("role") ?? "teacher";
+
+if (!boardPath || (!boardId && !aiPrompt)) {
   out({
     ok: false,
     error: "usage",
-    hint: "node scripts/run.mjs <board.json> --stage prepare | --stage deliver --board-url <url> --visitor no_access|reader|commenter|author|approver",
+    hint: 'node scripts/run.mjs <board.json> (--board-id <既有看板id> | --ai-prompt "..." [--role teacher])',
   });
   process.exit(1);
 }
 
-try {
-  const board = JSON.parse(await fs.readFile(boardPath, "utf8"));
+const seedArgs = boardId
+  ? [boardPath, "--board-id", boardId]
+  : [boardPath, "--ai-prompt", aiPrompt, "--role", role];
 
-  if (stage === "prepare") {
-    const createArgs = ["--title", board.title ?? "未命名看板"];
-    if (board.format) createArgs.push("--layout", board.format);
-    for (const s of board.sections ?? []) createArgs.push("--section", s);
-
-    runState = await createRunState(PLATFORM, { id: "padlet-prepare", version: 1 }, inputFingerprint(board));
-    const created = await runTracked("create-board", "pw/create-board.mjs", createArgs);
-    if (!created.ok) {
-      out({ ok: false, stage, step: "create-board", ...created });
-      process.exit(1);
-    }
-
-    // Seed with the Playwright seeder. (REST seed-board.mjs needs a numeric
-    // --board-id, which a UI-created board URL doesn't directly expose, so the
-    // one-command chain seeds via the UI for reliability. With an API key,
-    // api/seed-board.mjs --board-id <id> is still available for advanced use.)
-    const seeded = await runTracked("seed-posts", "pw/seed-posts.mjs", [boardPath, "--board-url", created.boardUrl]);
-    if (!seeded.ok) {
-      out({ ok: false, stage, step: "seed", boardUrl: created.boardUrl, ...seeded });
-      process.exit(1);
-    }
-
-    out({
-      ok: true,
-      stage: "prepare",
-      runId: runState.runId,
-      boardUrl: created.boardUrl,
-      title: board.title,
-      layout: created.layout,
-      added: seeded.added,
-      requested: seeded.requested,
-      failures: seeded.failures?.length ? seeded.failures : undefined,
-      confirm: {
-        visitorDefault: "author",
-        note: "訪客權限（no_access/reader/commenter/author/approver）是對外可見度變更，由老師確認後帶入 deliver。",
-      },
-      next: `老師確認後執行：node scripts/run.mjs ${boardPath} --stage deliver --board-url ${created.boardUrl} --visitor commenter`,
-    });
-    process.exit(0);
-  }
-
-  // stage === "deliver"
-  const boardUrl = arg("board-url");
-  const visitor = arg("visitor");
-  if (!boardUrl || !visitor) {
-    out({ ok: false, stage, error: "missing-args", hint: "deliver 需要 --board-url（來自 prepare）與 --visitor。" });
-    process.exit(1);
-  }
-
-  runState = await createRunState(PLATFORM, { id: "padlet-deliver", version: 1 }, inputFingerprint({ boardUrl, visitor }));
-  const shared = await runTracked("set-sharing", "pw/set-sharing.mjs", ["--board-url", boardUrl, "--visitor", visitor]);
-  if (!shared.ok) {
-    out({ ok: false, stage, step: "set-sharing", boardUrl, ...shared });
-    process.exit(1);
-  }
-
-  out({
-    ok: true,
-    stage: "deliver",
-    runId: runState.runId,
-    boardUrl,
-    visitor,
-    shareUrl: shared.shareUrl,
-    note: "完整鏈完成。把 shareUrl 交給學生即可。",
-  });
-} catch (err) {
-  out({
-    ok: false,
-    stage,
-    error: String(err?.message ?? err),
-    hint: "請確認 board.json 路徑與內容，以及先跑過 preflight 確認登入或 API key。",
-  });
+const result = runScript("api/seed-board.mjs", seedArgs);
+if (!result.ok) {
+  out({ ok: false, step: "seed-board", ...result });
   process.exit(1);
 }
+out({
+  ...result,
+  note: "貼文已種入看板。訪客權限與匯出 Padlet API 沒有對應端點，請老師直接在 padlet.com 的看板設定調整。",
+});

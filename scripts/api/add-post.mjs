@@ -28,6 +28,9 @@ try {
       notes.push(`找不到欄位「${r.unmatchedLabels.join("、")}」，改為不分欄張貼。`);
     }
   }
+  if (resolved.media && resolved.media.kind !== "image") {
+    notes.push("附件非圖片類型；Padlet 官方文件未完整記載非圖片附件的渲染行為，請貼文後自行檢查嵌入卡片是否正確顯示。");
+  }
   const res = await addPost(boardId, resolved);
   out({ ok: true, postId: res.data.id, url: res.data.attributes?.webUrl?.live ?? null, notes });
 } catch (err) {

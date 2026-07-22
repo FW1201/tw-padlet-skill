@@ -1,83 +1,64 @@
 ---
 name: tw-padlet-skill
-description: Use when a teacher wants to create, seed, share or export a Padlet board — 建立 Padlet 看板、種入貼文、設定訪客權限、匯出、AI 生成看板。Triggers include Padlet, board.json, 看板, 貼文牆, 討論板, seed posts, 分享連結.
+description: Use when a teacher wants to seed or read a Padlet board via the official REST API — 種入貼文、讀看板、AI 配方建板。Triggers include Padlet, board.json, 看板, 貼文牆, 討論板, seed posts.
 ---
 
 # tw-padlet-skill
 
-雙路徑操作 Padlet：**有 API key 走官方 API（優先），沒有走 Playwright**。兩者可混用——API 做不到的（建空白看板、訪客權限、匯出）一律走 Playwright。
+只走 Padlet 官方 REST API（需付費方案的 API key），不做任何瀏覽器自動化或登入。API 沒有建空白看板的端點，只能用 AI 配方建板，或種貼文進老師自己先在 padlet.com 手動建好的既有看板。
 
 ## 首次使用
 
 ```bash
 cd <skill-dir> && npm install
-npm run browser:start
-npm run browser:status
 ```
 
 只在 `node_modules/` 不存在時執行。
 
-⚠️ **執行環境**：無 API key 的 Playwright 路徑透過 CDP 連接教育平台專用正常 Chrome。Google OAuth/MFA 必須由老師在 Skill detach 後親自完成；有 API key 的 REST 路徑不受此限制。
+## 設定 API key（必要，本 skill 無此 key 無法使用）
 
-## 一鍵流程（推薦）
-
-無 API key 時先執行 `npm run browser:start`，完成兩階段 login，再跑 preflight。串接器中間只停在「訪客權限確認」：
+至 [padlet.com/dashboard/settings/developers](https://padlet.com/dashboard/settings/developers) 申請（需付費方案），然後：
 
 ```bash
-node scripts/run.mjs board.json --stage prepare                       # 建看板+種貼文，回傳 boardUrl
-node scripts/run.mjs board.json --stage deliver --board-url <url> --visitor commenter   # 設權限
+export PADLET_API_KEY=...
+# 或
+mkdir -p ~/.tw-edu-skills/padlet && echo '{"apiKey":"..."}' > ~/.tw-edu-skills/padlet/config.json && chmod 600 ~/.tw-edu-skills/padlet/config.json
 ```
 
-建看板一律走 Playwright（REST 無法建空白板）；種貼文預設走 Playwright。下方為細部控制與雙路徑決策。
-
-## 路徑決策（每次任務先做）
-
-1. 檢查是否已設定 key（**只檢查存在與否，絕不讀出、echo 或顯示內容**）：
-   ```bash
-   printenv PADLET_API_KEY >/dev/null && echo has-env || echo no-env
-   ls ~/.tw-edu-skills/padlet/config.json 2>/dev/null && echo has-config || echo no-config
-   ```
-2. 都沒有 → 問老師：「你有 Padlet API key 嗎？（需付費方案，申請頁：padlet.com/dashboard/settings/developers）」有 → 請老師自行設定 env 或 config.json；沒有 → 走 Playwright 路徑。
-
-| 需求 | 有 key | 無 key |
-|---|---|---|
-| 讀看板/貼文 | `api/get-board.mjs`、`api/list-posts.mjs` | 直接開 URL 看 |
-| 建看板 | `api/create-ai-board.mjs`（僅 AI 生成，無空白板端點） | `pw/create-board.mjs`（可指定版面+欄位）|
-| 種貼文 | `api/seed-board.mjs`（支援欄位對應、附件、顏色）| `pw/seed-posts.mjs`（可分欄，但無附件/顏色）|
-| 加單篇貼文 | `api/add-post.mjs` | `pw/seed-posts.mjs` |
-| 訪客權限/分享連結 | ❌ API 做不到 | `pw/set-sharing.mjs` |
-| 匯出 PDF/CSV/Excel | ❌ API 做不到 | `pw/export-board.mjs` |
-
-**推薦的混合鏈**（API 無空白板端點，建板一律走 pw）：`pw/create-board.mjs` 建板 → 種貼文（**有 key 用 `api/seed-board.mjs`，品質最好**；無 key 用 `pw/seed-posts.mjs`）→ `pw/set-sharing.mjs` 設權限。
-
-⚠️ **走 pw 種貼文前先向老師預告品質折損**：貼文顏色遺失、media 附件不會變嵌入卡片（只會留純網址）。老師在意就建議申請 key。
-
-`--visitor` 對應官方 5 個選項：`no_access`＝僅共同作業者可看｜`reader`＝只能看｜`commenter`＝可留言、不可新增貼文｜`author`＝可新增貼文（預設值）｜`approver`＝可撰寫/編輯/核准貼文。
+`node scripts/preflight.mjs` 確認 key 是否已設定（只檢查存在與否，不會讀出或顯示內容）。
 
 ## 工作流程
 
-1. Playwright 前置：`npm run browser:start` → `node scripts/pw/login.mjs` → 老師在專用正常 Chrome 完成 OAuth/MFA → 重跑 login/preflight。
-2. 建板前先在對話中與老師確認：標題、版面、欄位名稱。**版面官方共 9 種**：schema 對應 5 種（wall/grid/columns/stream/canvas，其中 `grid`→「表格」、`canvas`→「自由格式」，非字面「網格」「畫布」）+ 額外 4 種可用中文字面值直接指定（story/timeline/list/map）。
-3. 種貼文：有 key 用 `node scripts/api/seed-board.mjs board.json --board-id <id>`；無 key 用 `node scripts/pw/seed-posts.mjs board.json --board-url <url>`。輸出 `added/failed/errors/notes`——**unmatched 欄位與失敗貼文一定要轉述**。
-4. 權限（外部寫入，先確認）：`node scripts/pw/set-sharing.mjs --board-url <url> --visitor commenter`（在齒輪設定裡，不是頂部「分享」按鈕——那個只有複製連結/QR code）。
-5. 最終交付：分享連結（`shareUrl`）＋ 貼文統計。
+1. **前置檢查**：`node scripts/preflight.mjs` → `{ok:false, apiKey:false}` 時先引導老師設定 key。
+2. **種貼文（一鍵）**：
+   ```bash
+   node scripts/run.mjs board.json --board-id <老師既有看板id>
+   # 或用 AI 配方建立新看板：
+   node scripts/run.mjs board.json --ai-prompt "討論光合作用對氣候的影響" --role teacher
+   ```
+   輸出 `boardId`/`url`/`added`/`failed`/`notes`——**這是外部寫入的確認點**：貼文會直接出現在看板上，`notes` 一定要轉述給老師（欄位對應失敗、非圖片附件渲染未經驗證等）。
+3. **細部控制**（不需要 run.mjs 時）：
+   - `node scripts/api/get-board.mjs <board-id>`：讀看板（含欄位、貼文數）。
+   - `node scripts/api/list-posts.mjs <board-id>`：列貼文。
+   - `node scripts/api/create-ai-board.mjs --prompt "..."`：AI 生成看板（唯一 API 建板端點，非同步輪詢約 2 分鐘）。
+   - `node scripts/api/add-post.mjs <board-id> post.json`：加單篇貼文。
+   - `node scripts/api/seed-board.mjs board.json (--board-id X | --ai-prompt "...")`：`run.mjs` 內部呼叫的就是這支。
+
+4. **API 做不到的事，請老師直接到 padlet.com 手動處理**：建空白看板＋自訂版面/分欄名稱、訪客權限設定、匯出 PDF/CSV/Excel。
 
 ## 規則
 
 - board id 是看板 URL 結尾 16-22 字元；`api/get-board.mjs` 可驗證。
 - AI recipe board 內容不可控：建完先 `list-posts` 檢視再補種。
-- 每支腳本輸出單行 JSON；失敗照 `hint` 做，同一支 pw 腳本最多重試 1 次。
-- 出現 `handoff`：把 `resumeUrl`/`screenshot` 交還老師。
-- 絕不輸出 API key 或讀取瀏覽器 profile 內容。
+- 每支腳本輸出單行 JSON；`ok:false` 時照 `hint` 做。
+- 絕不輸出 API key。
+- 這裡沒有任何瀏覽器/登入自動化——見下方「為什麼沒有瀏覽器自動化」。
 
 ## 常見錯誤
 
 | 症狀 | 處理 |
 |---|---|
-| `MissingCredential` | 依 hint 引導老師設 key，或改走 pw 路徑 |
-| `Padlet API 401/403` | key 無效或方案不含 API；改走 pw 路徑 |
-| `all-posts-failed` | 檢查 board id/欄位；ok:false 不可當成功回報 |
-| schema 驗證失敗 | 錯誤含 zod issues；轉譯成老師聽得懂的欄位說明，不要原樣轉貼。注意：schema 驗證先於憑證檢查，無 key 也能先驗檔案格式 |
-| `selector-failure` | Padlet 改版；交還 resumeUrl 並回報更新 flow manifest |
-| `cdp-unavailable` | 先跑 `npm run browser:start`，保持該正常 Chrome 開啟 |
-| `oauth-browser-rejected` | 關閉舊 automated Chromium；在專用正常 Chrome 重新登入 |
+| `MissingCredential` | 依 hint 引導老師設定 `PADLET_API_KEY` |
+| `Padlet API 401/403` | key 無效或方案不含 API |
+| `all-posts-failed` | 檢查 board id/欄位；`ok:false` 不可當成功回報 |
+| schema 驗證失敗 | 錯誤含 zod issues；轉譯成老師聽得懂的欄位說明，不要原樣轉貼 |

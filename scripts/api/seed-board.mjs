@@ -69,7 +69,13 @@ try {
         `可用的欄位：${sections.map((s) => s.title).filter(Boolean).join("、") || "（無）"}。`,
     );
   }
-  notes.push("API 無法設定訪客權限——請用 scripts/pw/set-sharing.mjs 或請老師在 Padlet 分享設定調整。");
+  notes.push("API 無法設定訪客權限/匯出——請老師直接在 padlet.com 的看板設定調整。");
+  const nonImageCount = posts.filter((p) => p.media && p.media.kind !== "image").length;
+  if (nonImageCount > 0) {
+    notes.push(
+      `${nonImageCount} 則貼文附件非圖片類型；Padlet 官方文件未完整記載非圖片附件的渲染行為，請貼文後自行檢查嵌入卡片是否正確顯示。`,
+    );
+  }
 
   const failed = board.seedPosts.length - added;
   const ok = added > 0 || board.seedPosts.length === 0; // all posts failed ≠ success

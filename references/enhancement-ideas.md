@@ -1,42 +1,25 @@
-# 功能擴充構想（2026-07-22 起兩輪 live 驗證觀察，供下一輪升級參考）
+# API 完整度 backlog（2026-07-23 大型縮減後改寫）
 
-> ✅ **v0.2.0 已完成**：新增 `preflight.mjs`（依賴/API key/登入前置檢查）與 `run.mjs`（一鍵 prepare 建板+種貼文 / deliver 設權限）。匯出格式（#2 CSV/Excel/image）仍待驗證——本輪因帳號在 3 板上限且現有為使用者真實個人看板，未動用真實看板做匯出探索，維持 `export-board.mjs` 現狀（PDF 確認、其餘 provisional）。
+> ⚠️ **範圍變更**：本 skill 已拿掉整個 Playwright/瀏覽器自動化層（登入、建空白看板、訪客權限、匯出全部移除），只剩 `scripts/api/*.mjs` 走官方 REST API。以下只保留「API client 還能補的官方規則細節」——需要操作 Padlet 網頁 UI 才有意義的舊項目（AI 配方系統的 4 分頁 UI 流程、匯出格式探索、內容匯入來源、共同作業者邀請、隱私選項、貼文留言/反應、Sandbox 類別）已隨自動化層一起移除，不再是這個 skill 的範圍。
 
-## 高價值
+## 已完成（本輪）
 
-1. **AI 配方系統（第二輪已完整驗證，比純 API 豐富很多）**
-   點「討論板」等 AI 範本卡片，會**直接建立一個新看板**並自動彈出設定面板，流程分 4 個分頁：
-   - **產生**：結構化輸入「主題」文字框 + 「年級」快選（K/1-12/高等教育），按「產生」後（約 8-10 秒）回傳 **4 個結構化子主題建議**，每個都標好類型（如「問題和答覆」「辯論」），比 API 的 `ai-recipe-boards` 純文字 prompt 更貼近教學設計。底部有「不想使用人工智慧嗎？手動填入」逃生艙。
-   - **設定**：選定子主題後，看板標題自動更新為該子主題文字；有「討論提示」可編輯 textarea + 討論類型單選（問題和答覆 / 辯論，各附一句使用情境說明）
-   - **張貼**：「新增第一則貼文」，可「自行撰寫」或用 AI 生成範例貼文（本輪未等到生成結果），底部可「略過此步驟」
-   - **分享**：複製連結、QR 碼、**在 Google Classroom 中分享**、傳送電子郵件、嵌入部落格/網站
-   - → `pw/create-board.mjs` 可加 `--ai-topic <文字> --ai-grade <K|1-12|higher-ed> --ai-recipe discussion|classroom-builder|lesson-plan|inspiration` 選項，直接走這條路徑；比空白版面+手動打欄位更貼近老師「給主題就好」的使用習慣。
+- ✅ **空字串→null 轉換**：`buildPostPayload` 的 `body`/`subject` 為空字串時正確轉成 `null`（Padlet 官方文件早有記載但先前未實作的落差）。
+- ✅ **輪詢容錯**：`createAiBoardAndWait` 單次網路抖動不再中止整個 ~2 分鐘等待。
+- ✅ **非圖片附件警告**：`add-post.mjs`/`seed-board.mjs` 對 `media.kind !== "image"` 明確警告需人工檢查渲染結果，而非假裝完全支援。
+- ✅ `run.mjs`/`preflight.mjs` 縮減為純 API 版本，無 CDP/browser 依賴。
 
-2. **匯出格式擴充**（本輪仍只確認「匯出 PDF」分頁存在，CSV/Excel/image 未實測）
-   → 下一輪需在「分享此看板」面板逐一點開確認每種格式的實際入口，目前 `export-board.mjs` 的 csv/xlsx/image 分支仍是 fallback 猜測。
+## 還能做的 API 細節（下一輪參考）
 
-3. **內容匯入來源**（「製作 padlet」畫面頂部「從 Google Slides 匯入」「匯入 PDF」）
-   → 可做 `pw/import-content.mjs`，把既有 Google Slides/PDF 直接轉成 Padlet 貼文。
+1. **attachment 的 kind-specific 處理**：目前所有 `media.kind` 一律組成同一種 `{url, caption}` 附件形狀；Padlet 官方文件對 video/audio/link/drive_file/youtube 各自的渲染行為未完整記載，若未來能取得更詳細的官方文件，應改用 kind-specific 的欄位處理而非目前的統一警告。
+2. **`resolveSeedSections` 的欄位對應演算法**：目前用精確字串比對區塊名稱，未涵蓋常見誤植（全形/半形空格、大小寫）——可加入更寬鬆的模糊比對，但要避免誤配對到錯誤區塊。
+3. **AI recipe board 的 role/workspaceId 參數覆蓋率**：目前 `create-ai-board.mjs` 只暴露 `--role`/`--workspace-id`，若官方 API 之後開放更多 AI 生成參數（如年級/討論類型），可對映擴充。
 
-## 中價值
+## 已隨自動化層移除、不再適用
 
-4. **共同作業者邀請**（分享面板「新增共同作業者」+「邀請」）
-   → `pw/set-sharing.mjs` 加 `--invite <email>` 選項，適合協同教學。
-
-5. **隱私選項**（分享面板「需要密碼」「要求訪客登入」「發佈至個人檔案和網路」三個 toggle）
-   → 加 `--require-password <pwd>` `--require-login` 參數。
-
-6. **貼文留言/反應**（貼文卡片下方「新增留言」+ 表情符號反應圖示）
-   → 可做 `pw/add-comment.mjs`。
-
-7. **Sandbox 類別**（跟看板版面平行的另一大類：白板/腦力激盪網狀圖/簡報/文氏圖/每日一題，第二輪確認入口在「製作 padlet」畫面「建立 sandbox 一起繪圖和腦力激盪」區塊，跟看板版面共用同一個「+ 製作」觸發點）
-   → 下一輪可實測 sandbox 的實際 URL 與建立流程，可能需要獨立的 `pw/create-sandbox.mjs`。
-
-## 低價值／備查
-
-8. **Backpack 配額**（「已使用 3 個 Padlet 中的 2 個」提示）——建板前可先檢查配額。
-9. **投影片模式**（頂部導覽「投影片」按鈕，看板轉簡報播放）——教學展示用途，跟自動化操作關聯較低。
-
-## 殘留測試內容提醒
-
-第二輪驗證時額外建立了一個 AI 配方看板「光合作用如何影響全球氣候變化？」（`padlet-rehbrbfycw0lc4y8`），連同第一輪的「我的出眾 Padlet 看板」，共 2 筆測試殘留，尚未清理。
+以下項目原本假設有 Playwright 操作 Padlet UI，拿掉登入機制後已無實作基礎，不列入此 skill 未來範圍——**這也是本輪對使用者確認過、可接受的能力縮減**：
+- 建立指定版面/自訂分欄名稱的空白看板（API 唯一建板端點是 AI 配方，內容方向由 AI 決定）
+- 訪客權限設定（reader/commenter/author/approver 等 5 級）
+- 匯出 PDF/CSV/Excel/圖片
+- AI 配方系統的完整 4 分頁 UI 流程（產生/設定/張貼/分享）——API 版的 `create-ai-board.mjs` 只對應「產生」分頁的核心能力（主題→建板），較豐富的年級快選/討論類型單選等 UI 專屬體驗無 API 對應
+- 內容匯入來源（Google Slides/PDF 匯入）、共同作業者邀請、隱私選項（密碼/要求登入）、貼文留言/反應、Sandbox 類別、投影片模式

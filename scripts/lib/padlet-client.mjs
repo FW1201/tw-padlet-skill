@@ -31,7 +31,7 @@ async function apiKey() {
   }
   throw new MissingCredentialError(
     "缺少 PADLET_API_KEY。請至 https://padlet.com/dashboard/settings/developers 申請（需付費方案），" +
-      `再 export PADLET_API_KEY=... 或寫入 ${CONFIG_PATH}。沒有 key 時可改用本 skill 的 Playwright 路徑（scripts/pw/）。`,
+      `再 export PADLET_API_KEY=... 或寫入 ${CONFIG_PATH}。本 skill 只走官方 API，無 key 則無法使用。`,
   );
 }
 
@@ -61,12 +61,23 @@ async function request(url, { method = "GET", json, query } = {}) {
   return body;
 }
 
+// Padlet's API docs state string fields must not be sent as empty strings —
+// use null instead. BoardPost.body defaults to "" via zod (a form-friendly
+// default, not a network-friendly one), so this was a known but unimplemented
+// gap: an empty body/subject would previously be sent as "" verbatim.
+const nullIfEmpty = (s) => (s === "" ? null : s);
+
 /** Map a core BoardPost to the Padlet JSON:API post body. No network I/O. */
 export function buildPostPayload(post) {
-  const content = { body: post.body };
-  if (post.subject !== undefined) content.subject = post.subject;
+  const content = { body: nullIfEmpty(post.body) };
+  if (post.subject !== undefined) content.subject = nullIfEmpty(post.subject);
   if (post.media !== undefined) {
     const caption = post.media.title ?? post.media.altText;
+    // Padlet's attachment endpoint behavior for non-image media kinds isn't
+    // fully documented (platform-features.md only confirms the shape below
+    // for images); pass the URL/caption through uniformly but let the caller
+    // (add-post.mjs / seed-board.mjs) decide whether to warn on non-image
+    // kinds rather than guessing at kind-specific handling here.
     content.attachment = {
       url: post.media.url,
       ...(caption !== undefined ? { caption } : {}),
@@ -129,24 +140,35 @@ export async function pollAiBoardStatus(statusUrl) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Create an AI recipe board and poll until ready (3s × 40 ≈ 2 min). */
+/**
+ * Create an AI recipe board and poll until ready (3s × 40 ≈ 2 min).
+ * A transient network error during one poll attempt no longer aborts the
+ * whole ~2-minute wait — only an explicit `status: "failed"` from Padlet does.
+ */
 export async function createAiBoardAndWait(params, { intervalMs = 3000, maxAttempts = 40 } = {}) {
   const created = await createAiBoard(params);
   const statusUrl = created.data.attributes.statusUrl;
+  let lastError;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const status = await pollAiBoardStatus(statusUrl);
-    const attrs = status.data.attributes;
-    if (attrs.status === "success" && attrs.board) {
-      return {
-        boardId: attrs.board.id,
-        title: attrs.board.attributes?.title,
-        url: attrs.board.attributes?.webUrl?.live,
-      };
+    try {
+      const status = await pollAiBoardStatus(statusUrl);
+      const attrs = status.data.attributes;
+      if (attrs.status === "success" && attrs.board) {
+        return {
+          boardId: attrs.board.id,
+          title: attrs.board.attributes?.title,
+          url: attrs.board.attributes?.webUrl?.live,
+        };
+      }
+      if (attrs.status === "failed") throw new Error("Padlet AI board creation failed.");
+      lastError = undefined;
+    } catch (err) {
+      if (/Padlet AI board creation failed/.test(err.message)) throw err;
+      lastError = err; // transient (network/parse) — keep polling
     }
-    if (attrs.status === "failed") throw new Error("Padlet AI board creation failed.");
     await sleep(intervalMs);
   }
-  throw new Error(`Padlet AI board creation did not complete within ${(intervalMs * maxAttempts) / 1000}s.`);
+  throw lastError ?? new Error(`Padlet AI board creation did not complete within ${(intervalMs * maxAttempts) / 1000}s.`);
 }
 
 /**
