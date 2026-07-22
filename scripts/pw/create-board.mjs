@@ -30,6 +30,7 @@ import {
   failWithDiagnostics,
   handoff,
   clickFirst,
+  assertPlatformAuthenticated,
 } from "../lib/session.mjs";
 
 const PLATFORM = "padlet";
@@ -81,11 +82,7 @@ if (!LAYOUT_LABEL[layout]) {
 const { context, page } = await openSession(PLATFORM);
 try {
   await page.goto("https://padlet.com/dashboard", { waitUntil: "domcontentloaded" });
-  if (!DASHBOARD.test(page.url())) {
-    fail("not-logged-in", "尚未登入 Padlet。請先執行 node scripts/pw/login.mjs。");
-    await context.close();
-    process.exit(1);
-  }
+  await assertPlatformAuthenticated(page, PLATFORM);
 
   await clickFirst(
     page,

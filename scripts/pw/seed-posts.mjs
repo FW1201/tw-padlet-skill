@@ -21,6 +21,8 @@ import {
   fail,
   failWithDiagnostics,
   handoff,
+  waitForCondition,
+  assertPlatformAuthenticated,
 } from "../lib/session.mjs";
 
 const PLATFORM = "padlet";
@@ -50,11 +52,7 @@ let added = 0;
 const failures = [];
 try {
   await page.goto(boardUrl, { waitUntil: "domcontentloaded" });
-  if (/auth\/login/.test(page.url())) {
-    fail("not-logged-in", "尚未登入 Padlet。請先執行 node scripts/pw/login.mjs。");
-    await context.close();
-    process.exit(1);
-  }
+  await assertPlatformAuthenticated(page, PLATFORM);
 
   for (const post of board.seedPosts) {
     try {
@@ -89,7 +87,19 @@ try {
       const publish = page.getByRole("button", { name: /^發布$|^publish$/i }).first();
       await publish.waitFor({ state: "visible", timeout: 8000 });
       await publish.click();
-      await page.waitForTimeout(800);
+      const evidenceText = post.subject || post.body;
+      const published = await waitForCondition(
+        page,
+        async () => {
+          if (!evidenceText) return true;
+          const matchingText = page.getByText(evidenceText, { exact: true }).first();
+          return (await matchingText.count()) > 0 && await matchingText.isVisible().catch(() => false);
+        },
+        { timeoutMs: 12000, intervalMs: 250 },
+      );
+      if (!published) {
+        throw Object.assign(new Error("post-success-evidence-timeout"), { code: "post-success-evidence-timeout" });
+      }
       added += 1;
     } catch (err) {
       failures.push({ subject: post.subject ?? "(無標題)", error: String(err?.message ?? err) });

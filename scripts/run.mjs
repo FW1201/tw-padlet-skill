@@ -22,8 +22,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRunState, inputFingerprint } from "./lib/session.mjs";
+import { createTrackedRunner } from "./lib/browser-core/orchestrator.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const PLATFORM = "padlet";
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -32,6 +35,9 @@ function arg(name) {
 function out(obj) {
   console.log(JSON.stringify(obj));
 }
+
+let runState;
+const runTracked = createTrackedRunner({ here: HERE, platform: PLATFORM, getState: () => runState });
 
 function runScript(relPath, args) {
   const res = spawnSync(process.execPath, [path.join(HERE, relPath), ...args], {
@@ -77,7 +83,8 @@ try {
     if (board.format) createArgs.push("--layout", board.format);
     for (const s of board.sections ?? []) createArgs.push("--section", s);
 
-    const created = runScript("pw/create-board.mjs", createArgs);
+    runState = await createRunState(PLATFORM, { id: "padlet-prepare", version: 1 }, inputFingerprint(board));
+    const created = await runTracked("create-board", "pw/create-board.mjs", createArgs);
     if (!created.ok) {
       out({ ok: false, stage, step: "create-board", ...created });
       process.exit(1);
@@ -87,7 +94,7 @@ try {
     // --board-id, which a UI-created board URL doesn't directly expose, so the
     // one-command chain seeds via the UI for reliability. With an API key,
     // api/seed-board.mjs --board-id <id> is still available for advanced use.)
-    const seeded = runScript("pw/seed-posts.mjs", [boardPath, "--board-url", created.boardUrl]);
+    const seeded = await runTracked("seed-posts", "pw/seed-posts.mjs", [boardPath, "--board-url", created.boardUrl]);
     if (!seeded.ok) {
       out({ ok: false, stage, step: "seed", boardUrl: created.boardUrl, ...seeded });
       process.exit(1);
@@ -96,6 +103,7 @@ try {
     out({
       ok: true,
       stage: "prepare",
+      runId: runState.runId,
       boardUrl: created.boardUrl,
       title: board.title,
       layout: created.layout,
@@ -119,7 +127,8 @@ try {
     process.exit(1);
   }
 
-  const shared = runScript("pw/set-sharing.mjs", ["--board-url", boardUrl, "--visitor", visitor]);
+  runState = await createRunState(PLATFORM, { id: "padlet-deliver", version: 1 }, inputFingerprint({ boardUrl, visitor }));
+  const shared = await runTracked("set-sharing", "pw/set-sharing.mjs", ["--board-url", boardUrl, "--visitor", visitor]);
   if (!shared.ok) {
     out({ ok: false, stage, step: "set-sharing", boardUrl, ...shared });
     process.exit(1);
@@ -128,6 +137,7 @@ try {
   out({
     ok: true,
     stage: "deliver",
+    runId: runState.runId,
     boardUrl,
     visitor,
     shareUrl: shared.shareUrl,

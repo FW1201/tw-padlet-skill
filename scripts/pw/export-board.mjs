@@ -17,6 +17,7 @@ import {
   failWithDiagnostics,
   handoff,
   clickFirst,
+  assertPlatformAuthenticated,
 } from "../lib/session.mjs";
 
 const PLATFORM = "padlet";
@@ -42,11 +43,7 @@ if (!boardUrl || !LABEL[format]) {
 const { context, page } = await openSession(PLATFORM);
 try {
   await page.goto(boardUrl, { waitUntil: "domcontentloaded" });
-  if (/auth\/login/.test(page.url())) {
-    fail("not-logged-in", "尚未登入 Padlet。請先執行 node scripts/pw/login.mjs。");
-    await context.close();
-    process.exit(1);
-  }
+  await assertPlatformAuthenticated(page, PLATFORM);
 
   await page.getByRole("button", { name: /settings|設定/i }).first().click({ timeout: 10000 }).catch(async () => {
     await page.locator('[class*="settings" i], [aria-label*="settings" i]').first().click({ timeout: 8000 });

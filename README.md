@@ -66,6 +66,27 @@ mkdir -p ~/.tw-edu-skills/padlet && echo '{"apiKey":"..."}' > ~/.tw-edu-skills/p
 - Playwright 路徑：可見瀏覽器、老師本人帳號與內容；登入/MFA 親自完成；外部寫入（建板、改權限）前 agent 需在對話中確認；選擇器失敗零重試、截圖、交還人工；cookies 只存本機 Chromium profile。
 - **Playwright 路徑需在本機、有螢幕的互動式 agent session 執行**；雲端背景任務/遠端無頭 sandbox/CI 無法顯示瀏覽器視窗，不適用（有 API key 的 REST 路徑不受此限制）。
 
+## Browser Core v1
+
+Playwright flows now use an isolated per-platform profile lock, a URL + DOM
+authentication check, condition-based waits, run-state journals, classified
+selector failures, and local redacted diagnostics. Sharing changes require a
+read-back confirmation; an ambiguous external write returns `resumeUrl` and
+must not be retried automatically.
+
+Run local checks with:
+
+```bash
+npm test
+npm run check:browser-core
+```
+
+Validation boundaries and the latest readonly canary result are recorded in
+`docs/browser-core-validation.md`.
+
+Computer Use is a manual fallback for login/MFA/CAPTCHA or selector drift; it
+does not replace deterministic success evidence or external-write gates.
+
 ## License
 
 MIT

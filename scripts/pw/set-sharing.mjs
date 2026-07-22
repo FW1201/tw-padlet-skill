@@ -18,6 +18,8 @@ import {
   fail,
   failWithDiagnostics,
   handoff,
+  waitForCondition,
+  assertPlatformAuthenticated,
 } from "../lib/session.mjs";
 
 const PLATFORM = "padlet";
@@ -43,11 +45,7 @@ if (!boardUrl || !LABEL[visitor]) {
 const { context, page } = await openSession(PLATFORM);
 try {
   await page.goto(boardUrl, { waitUntil: "domcontentloaded" });
-  if (/auth\/login/.test(page.url())) {
-    fail("not-logged-in", "尚未登入 Padlet。請先執行 node scripts/pw/login.mjs。");
-    await context.close();
-    process.exit(1);
-  }
+  await assertPlatformAuthenticated(page, PLATFORM);
 
   // The permission control is behind the gear/settings icon, not the "分享"
   // button (that one only has copy-link/QR code).
@@ -61,6 +59,25 @@ try {
   const permissionDropdown = page.getByText(/^擁有連結的訪客$|^people with the link$/i).locator("xpath=following-sibling::*[1]");
   await permissionDropdown.click({ timeout: 8000 });
   await page.getByText(LABEL[visitor]).click({ timeout: 8000 });
+
+  // Clicking an option is not success evidence. Read the selected state back
+  // from the control before returning a share link.
+  const readBack = await waitForCondition(
+    async () => {
+      const selectedText = await permissionDropdown.innerText().catch(() => "");
+      const checked = page.locator('[aria-selected="true"], [aria-checked="true"]').filter({ hasText: LABEL[visitor] });
+      return LABEL[visitor].test(selectedText) || await checked.count() > 0;
+    },
+    { timeoutMs: 10000, intervalMs: 150, description: "padlet-sharing-permission-readback" },
+  ).catch(() => false);
+  if (!readBack) {
+    await handoff(PLATFORM, page, "sharing-state-ambiguous", {
+      visitor,
+      hint: "權限選項已點擊，但無法確認 Padlet 已套用。請人工重新檢查分享此看板面板，不要再次自動點擊。",
+    });
+    await context.close();
+    process.exit(1);
+  }
 
   // Capture the share link from the "複製連結"/copy-link row.
   let shareUrl;

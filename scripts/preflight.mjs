@@ -32,19 +32,30 @@ function hasApiKey() {
 }
 
 const apiKey = hasApiKey();
-const { openSession } = await import("./lib/session.mjs");
+const { openSession, inspectAuth, gotoReady, authManifest } = await import("./lib/session.mjs");
 const PLATFORM = "padlet";
 const DASHBOARD = /padlet\.com\/(dashboard|home)/;
+const AUTH = authManifest({
+  entryUrl: "https://padlet.com/dashboard",
+  loginUrls: [/padlet\.com\/auth/i, /padlet\.com\/login/i],
+  authenticatedUrlPatterns: [DASHBOARD],
+  authenticatedLocators: [(p) => p.getByText(/製作|make|dashboard|看板/i)],
+});
 
-const { context, page } = await openSession(PLATFORM);
+let context;
+let page;
 try {
-  await page.goto("https://padlet.com/dashboard", { waitUntil: "domcontentloaded" });
-  const loggedIn = DASHBOARD.test(page.url()) && !/\/(login|auth)/i.test(page.url());
+  ({ context, page } = await openSession(PLATFORM));
+  await gotoReady(page, "https://padlet.com/dashboard", { timeoutMs: 30000 });
+  const auth = await inspectAuth(page, AUTH);
+  const loggedIn = auth.state === "authenticated";
   console.log(
     JSON.stringify({
       ok: loggedIn || apiKey,
       apiKey,
       loggedIn,
+      authState: auth.state,
+      checkedUrl: auth.url,
       path: apiKey ? "rest+playwright" : "playwright",
       note: apiKey
         ? "偵測到 API key：seed 可走 REST；建板/權限/匯出仍走 Playwright（API 無法建空白板）。"
@@ -65,5 +76,5 @@ try {
   );
   process.exitCode = 1;
 } finally {
-  await context.close();
+  await context?.close();
 }

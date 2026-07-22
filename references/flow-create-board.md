@@ -16,6 +16,7 @@
 - fallback artifact: 無（老師手動建板約 2 分鐘）
 - trace policy: 失敗截圖存 `~/.tw-edu-skills/padlet/diagnostics/`
 - **last-verified: 2026-07-22**（步驟 1-3, 5-6 已用真實帳號逐步驗證；步驟 4 的設定面板 title input 為推測，未實測是否可寫入，有 fallback）
+- capability-status: provisional（board URL/title/layout evidence；title panel input still needs live confirmation）
 
 # Flow: seed posts (PW)
 
@@ -30,6 +31,7 @@
 - success evidence: 貼文卡片出現在正確區段下方，含作者/時間戳
 - 連續 2 篇失敗且 0 成功 → composer-selector-failure handoff
 - **last-verified: 2026-07-22**（完整測試 1 篇貼文成功發布並正確歸屬區段）
+- capability-status: provisional（section placement verified；attachments and colors remain manual fallback）
 
 # Flow: set sharing (PW)
 
@@ -46,8 +48,10 @@
      - 審核者（Approver）：可撰寫、編輯、核准貼文
 - success evidence: 選項被選中 + 面板內複製連結欄位可取得 share link
 - **last-verified: 2026-07-22**（完整展開驗證 5 個選項文字與說明；未實測點選後的送出/生效流程）
+- capability-status: pending（permission read-back added；live persistence confirmation still required）
 
 # Flow: export (PW)
 
 - entry: board URL；步驟：齒輪設定 → 分享此看板面板 → 頂部「匯出 PDF」標籤（同一面板內，非另外的 Share 選單）
 - last-verified: PENDING（未實測）
+- capability-status: pending（keep pending until export output is verified live）
