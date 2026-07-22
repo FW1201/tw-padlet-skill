@@ -15,10 +15,12 @@
 ## 快速上手（一鍵流程，推薦）
 
 ```bash
-cd <skill-dir> && npm install && npx playwright install chromium   # 首次
-
-node scripts/preflight.mjs                              # 確認依賴/API key/登入
-node scripts/pw/login.mjs                               # 若無 key 且未登入，老師本人登入一次
+cd <skill-dir> && npm install                           # 首次
+npm run browser:start                                   # 啟動教育平台專用「正常 Chrome」
+npm run browser:status                                  # 確認 CDP 已可連線
+node scripts/pw/login.mjs                               # 第一次開登入頁後立即 handoff
+# 在保持開啟的正常 Chrome 完成 Google 登入／MFA，然後：
+node scripts/pw/login.mjs && node scripts/preflight.mjs
 node scripts/run.mjs board.json --stage prepare         # 建看板+種貼文，回傳 boardUrl
 # ⇧ agent 跟老師確認訪客權限後：
 node scripts/run.mjs board.json --stage deliver \
@@ -63,16 +65,20 @@ mkdir -p ~/.tw-edu-skills/padlet && echo '{"apiKey":"..."}' > ~/.tw-edu-skills/p
 ## 自動化邊界（ToS 風險控管）
 
 - API 路徑：官方公開 API，完全合規；金鑰只在腳本內部讀取，絕不 echo/輸出。
-- Playwright 路徑：可見瀏覽器、老師本人帳號與內容；登入/MFA 親自完成；外部寫入（建板、改權限）前 agent 需在對話中確認；選擇器失敗零重試、截圖、交還人工；cookies 只存本機 Chromium profile。
+- Playwright 路徑：使用教育平台專用正常 Chrome；登入/MFA 親自完成；外部寫入（建板、改權限）前 agent 需在對話中確認；選擇器失敗零重試、截圖、交還人工；cookies 不匯出、不複製。
 - **Playwright 路徑需在本機、有螢幕的互動式 agent session 執行**；雲端背景任務/遠端無頭 sandbox/CI 無法顯示瀏覽器視窗，不適用（有 API key 的 REST 路徑不受此限制）。
 
-## Browser Core v1
+## Browser Core v2：正常 Chrome + CDP
 
-Playwright flows now use an isolated per-platform profile lock, a URL + DOM
+Playwright 預設透過 CDP 連接使用者啟動的教育平台專用正常 Chrome；Google OAuth、
+MFA、CAPTCHA 都在 Skill detach 後由老師本人完成。Flows still use a URL + DOM
 authentication check, condition-based waits, run-state journals, classified
 selector failures, and local redacted diagnostics. Sharing changes require a
 read-back confirmation; an ambiguous external write returns `resumeUrl` and
 must not be retried automatically.
+
+環境變數：`TW_EDU_CDP_URL` 可指定 endpoint；`TW_EDU_CHROME_PATH` 可指定 Chrome；
+只有非 Google 帳號的明確需求才可設定 `TW_EDU_BROWSER_MODE=playwright`。
 
 Run local checks with:
 

@@ -10,16 +10,18 @@ description: Use when a teacher wants to create, seed, share or export a Padlet 
 ## 首次使用
 
 ```bash
-cd <skill-dir> && npm install && npx playwright install chromium
+cd <skill-dir> && npm install
+npm run browser:start
+npm run browser:status
 ```
 
 只在 `node_modules/` 不存在時執行。
 
-⚠️ **執行環境**：無 API key 時的 Playwright 路徑開啟**可見（headed）瀏覽器**供老師登入，需在**本機、有螢幕的互動式 agent session**執行（Claude Code CLI/Desktop、Codex CLI、OpenCode 終端機皆可）。**雲端背景任務/遠端無頭 sandbox/CI（如 Codex Cloud tasks）無法顯示瀏覽器視窗，登入步驟會卡住或失敗**——請改在本機互動式 session 執行；有 API key 的 REST 路徑不受此限制。
+⚠️ **執行環境**：無 API key 的 Playwright 路徑透過 CDP 連接教育平台專用正常 Chrome。Google OAuth/MFA 必須由老師在 Skill detach 後親自完成；有 API key 的 REST 路徑不受此限制。
 
 ## 一鍵流程（推薦）
 
-先 `node scripts/preflight.mjs` 確認依賴、API key 有無、以及（無 key 時）老師是否已登入。再用串接器一次跑完，中間只停在「訪客權限確認」（對外可見度變更）：
+無 API key 時先執行 `npm run browser:start`，完成兩階段 login，再跑 preflight。串接器中間只停在「訪客權限確認」：
 
 ```bash
 node scripts/run.mjs board.json --stage prepare                       # 建看板+種貼文，回傳 boardUrl
@@ -54,7 +56,7 @@ node scripts/run.mjs board.json --stage deliver --board-url <url> --visitor comm
 
 ## 工作流程
 
-1. Playwright 前置：`node scripts/pw/login.mjs`（timeout ≥360000ms；老師本人登入）。
+1. Playwright 前置：`npm run browser:start` → `node scripts/pw/login.mjs` → 老師在專用正常 Chrome 完成 OAuth/MFA → 重跑 login/preflight。
 2. 建板前先在對話中與老師確認：標題、版面、欄位名稱。**版面官方共 9 種**：schema 對應 5 種（wall/grid/columns/stream/canvas，其中 `grid`→「表格」、`canvas`→「自由格式」，非字面「網格」「畫布」）+ 額外 4 種可用中文字面值直接指定（story/timeline/list/map）。
 3. 種貼文：有 key 用 `node scripts/api/seed-board.mjs board.json --board-id <id>`；無 key 用 `node scripts/pw/seed-posts.mjs board.json --board-url <url>`。輸出 `added/failed/errors/notes`——**unmatched 欄位與失敗貼文一定要轉述**。
 4. 權限（外部寫入，先確認）：`node scripts/pw/set-sharing.mjs --board-url <url> --visitor commenter`（在齒輪設定裡，不是頂部「分享」按鈕——那個只有複製連結/QR code）。
@@ -77,3 +79,5 @@ node scripts/run.mjs board.json --stage deliver --board-url <url> --visitor comm
 | `all-posts-failed` | 檢查 board id/欄位；ok:false 不可當成功回報 |
 | schema 驗證失敗 | 錯誤含 zod issues；轉譯成老師聽得懂的欄位說明，不要原樣轉貼。注意：schema 驗證先於憑證檢查，無 key 也能先驗檔案格式 |
 | `selector-failure` | Padlet 改版；交還 resumeUrl 並回報更新 flow manifest |
+| `cdp-unavailable` | 先跑 `npm run browser:start`，保持該正常 Chrome 開啟 |
+| `oauth-browser-rejected` | 關閉舊 automated Chromium；在專用正常 Chrome 重新登入 |
