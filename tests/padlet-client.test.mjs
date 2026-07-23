@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 
 process.env.PADLET_API_KEY = "test-key-not-real";
 
-const { buildPostPayload, createAiBoardAndWait } = await import("../scripts/lib/padlet-client.mjs");
+const { buildPostPayload, createAiBoardAndWait, addPost, verifyPostWrite, htmlToPlainText, PostVerificationError } =
+  await import("../scripts/lib/padlet-client.mjs");
 
 test("buildPostPayload converts an empty body to null (Padlet rejects empty strings)", () => {
   const payload = buildPostPayload({ body: "" });
@@ -76,6 +77,104 @@ test("an explicit failed status aborts immediately without exhausting retries", 
     );
     // createAiBoard (1) + exactly one poll attempt (1) = 2 fetch calls, not 40.
     assert.equal(getCallCount(), 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// --- htmlToPlainText -------------------------------------------------------
+
+test("htmlToPlainText strips tags, decodes common entities, and collapses whitespace", () => {
+  assert.equal(htmlToPlainText("<p>Hello &amp; welcome</p>"), "Hello & welcome");
+  assert.equal(htmlToPlainText("<p>line one</p><p>line two</p>"), "line one line two");
+  assert.equal(htmlToPlainText("a&nbsp;&nbsp;b"), "a b");
+  assert.equal(htmlToPlainText("&lt;tag&gt; &quot;quoted&quot; &#39;apos&#39;"), '<tag> "quoted" \'apos\'');
+  assert.equal(htmlToPlainText(null), "");
+  assert.equal(htmlToPlainText(undefined), "");
+});
+
+// --- verifyPostWrite --------------------------------------------------------
+// This is the fix for the reported bug: Padlet's response schema names the
+// body field "bodyHtml" (confirmed via https://docs.padlet.dev/reference/post-object),
+// not "body" — a naive reader checking response.content.body always sees
+// empty regardless of whether the write worked. verifyPostWrite compares
+// against the correct field, normalized to plain text.
+
+test("verifyPostWrite: ok when subject/body match exactly (no HTML wrapping)", () => {
+  const expected = { subject: "S", body: "B" };
+  const response = { attributes: { content: { subject: "S", bodyHtml: "B" } } };
+  const result = verifyPostWrite(expected, response);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.mismatches, []);
+});
+
+test("verifyPostWrite: ok when bodyHtml is plain text wrapped in <p> tags (genuine success)", () => {
+  const expected = { subject: "S", body: "測試內容" };
+  const response = { attributes: { content: { subject: "S", bodyHtml: "<p>測試內容</p>" } } };
+  const result = verifyPostWrite(expected, response);
+  assert.equal(result.ok, true);
+});
+
+test("verifyPostWrite: fails closed on a genuine body mismatch", () => {
+  const expected = { subject: "S", body: "what was sent" };
+  const response = { attributes: { content: { subject: "S", bodyHtml: "" } } };
+  const result = verifyPostWrite(expected, response);
+  assert.equal(result.ok, false);
+  assert.ok(result.mismatches.includes("body"));
+  assert.equal(result.verification.expected.body, "what was sent");
+  assert.equal(result.verification.actual.body, "");
+});
+
+test("verifyPostWrite: checks sectionId only when a section was requested", () => {
+  const withSection = { subject: "S", body: "B", section: "sec_1" };
+  const matchingResponse = { attributes: { content: { subject: "S", bodyHtml: "B" } }, relationships: { section: { data: { id: "sec_1" } } } };
+  assert.equal(verifyPostWrite(withSection, matchingResponse).ok, true);
+
+  const mismatchedResponse = { attributes: { content: { subject: "S", bodyHtml: "B" } }, relationships: { section: { data: { id: "sec_2" } } } };
+  const mismatchResult = verifyPostWrite(withSection, mismatchedResponse);
+  assert.equal(mismatchResult.ok, false);
+  assert.ok(mismatchResult.mismatches.includes("sectionId"));
+
+  // No section requested -> sectionId is never checked, even if the response has one.
+  const noSectionExpected = { subject: "S", body: "B" };
+  assert.equal(verifyPostWrite(noSectionExpected, mismatchedResponse).ok, true);
+});
+
+// --- addPost (mocked fetch) --------------------------------------------------
+
+test("addPost resolves normally when the response content verifies", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({
+      ok: true,
+      text: async () =>
+        JSON.stringify({ data: { id: "post1", attributes: { content: { subject: "S", bodyHtml: "<p>B</p>" } } } }),
+    });
+    const res = await addPost("board1", { subject: "S", body: "B" });
+    assert.equal(res.data.id, "post1");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("addPost throws PostVerificationError (with verification + postId) when read-back doesn't match", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({
+      ok: true,
+      text: async () =>
+        JSON.stringify({ data: { id: "post2", attributes: { content: { subject: "S", bodyHtml: "" } } } }),
+    });
+    await assert.rejects(
+      addPost("board1", { subject: "S", body: "content that should have been saved" }),
+      (err) => {
+        assert.ok(err instanceof PostVerificationError);
+        assert.equal(err.postId, "post2");
+        assert.ok(err.verification.expected.body.includes("content that should"));
+        assert.equal(err.verification.actual.body, "");
+        return true;
+      },
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

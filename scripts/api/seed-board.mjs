@@ -12,6 +12,7 @@ import {
   createAiBoardAndWait,
   resolveSeedSections,
   MissingCredentialError,
+  PostVerificationError,
 } from "../lib/padlet-client.mjs";
 
 function arg(name) {
@@ -45,12 +46,16 @@ try {
 
   let added = 0;
   const errors = [];
+  const verificationFailures = [];
   for (const post of posts) {
     try {
       await addPost(boardId, post);
       added += 1;
     } catch (err) {
       errors.push(String(err?.message ?? err));
+      if (err instanceof PostVerificationError) {
+        verificationFailures.push({ postId: err.postId ?? null, verification: err.verification });
+      }
     }
   }
 
@@ -76,10 +81,15 @@ try {
       `${nonImageCount} 則貼文附件非圖片類型；Padlet 官方文件未完整記載非圖片附件的渲染行為，請貼文後自行檢查嵌入卡片是否正確顯示。`,
     );
   }
+  if (verificationFailures.length > 0) {
+    notes.push(
+      `${verificationFailures.length} 則貼文寫入後讀回核對不符，未計入 added，見 verificationFailures。請到看板手動確認這些貼文。`,
+    );
+  }
 
   const failed = board.seedPosts.length - added;
   const ok = added > 0 || board.seedPosts.length === 0; // all posts failed ≠ success
-  out({ ok, boardId, url: url ?? "", requested: board.seedPosts.length, added, failed, errors, notes });
+  out({ ok, boardId, url: url ?? "", requested: board.seedPosts.length, added, failed, errors, verificationFailures, notes });
   if (!ok) process.exitCode = 1;
 } catch (err) {
   let hint;

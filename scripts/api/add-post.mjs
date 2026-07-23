@@ -8,6 +8,7 @@ import {
   listSections,
   resolveSeedSections,
   MissingCredentialError,
+  PostVerificationError,
 } from "../lib/padlet-client.mjs";
 
 const out = (o) => console.log(JSON.stringify(o));
@@ -34,6 +35,16 @@ try {
   const res = await addPost(boardId, resolved);
   out({ ok: true, postId: res.data.id, url: res.data.attributes?.webUrl?.live ?? null, notes });
 } catch (err) {
+  if (err instanceof PostVerificationError) {
+    out({
+      ok: false,
+      error: "post-write-verification-failed",
+      postId: err.postId,
+      verification: err.verification,
+      hint: "Padlet 回報建立成功，但讀回內容與送出內容不符，貼文可能未完整寫入。請直接到看板確認該則貼文，必要時手動修正或重新張貼——先確認是否真的沒建立成功，避免重複貼文。",
+    });
+    process.exit(1);
+  }
   out({
     ok: false,
     error: String(err?.message ?? err),

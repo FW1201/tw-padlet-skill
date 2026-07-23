@@ -1,4 +1,6 @@
-# API 完整度 backlog（2026-07-23 大型縮減後改寫）
+# API 完整度 backlog（2026-07-23 大型縮減後改寫；2026-07-23 v0.3.1 修正讀回 bug）
+
+> ✅ **v0.3.1**：修正真實帳號實測發現的讀回 bug——`buildPostPayload` 的寫入 payload 一直是對的（已對照官方文件 `docs.padlet.dev/reference/add-post` 逐字確認），但 `list-posts.mjs` 讀回時用了錯的欄位名稱：Padlet 回應把貼文內容放在 `content.bodyHtml`（不是 `content.body`），導致回讀永遠顯示空白，跟寫入是否成功無關。`addPost()` 現在會在寫入後立刻讀回核對 subject/body/分欄，不符就 fail-closed（見 `verifyPostWrite`/`PostVerificationError`），不再只憑 HTTP 2xx 判定成功。
 
 > ⚠️ **範圍變更**：本 skill 已拿掉整個 Playwright/瀏覽器自動化層（登入、建空白看板、訪客權限、匯出全部移除），只剩 `scripts/api/*.mjs` 走官方 REST API。以下只保留「API client 還能補的官方規則細節」——需要操作 Padlet 網頁 UI 才有意義的舊項目（AI 配方系統的 4 分頁 UI 流程、匯出格式探索、內容匯入來源、共同作業者邀請、隱私選項、貼文留言/反應、Sandbox 類別）已隨自動化層一起移除，不再是這個 skill 的範圍。
 

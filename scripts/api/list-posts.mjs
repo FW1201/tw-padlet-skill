@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Usage: node scripts/api/list-posts.mjs <board-id> [--limit N] [--offset N]
-import { listPosts, MissingCredentialError } from "../lib/padlet-client.mjs";
+import { listPosts, htmlToPlainText, MissingCredentialError } from "../lib/padlet-client.mjs";
 
 function arg(name, dflt) {
   const i = process.argv.indexOf(`--${name}`);
@@ -16,10 +16,14 @@ try {
   const all = await listPosts(boardId);
   const offset = arg("offset", 0);
   const limit = arg("limit", 50);
+  // Padlet's response schema names the body field "bodyHtml", not "body" —
+  // confirmed via https://docs.padlet.dev/reference/post-object. Reading
+  // "body" here always returns "" regardless of what was actually written.
   const page = all.slice(offset, offset + limit).map((p) => ({
     id: p.id,
     subject: p.attributes?.content?.subject ?? "",
-    body: p.attributes?.content?.body ?? "",
+    body: htmlToPlainText(p.attributes?.content?.bodyHtml ?? ""),
+    bodyHtml: p.attributes?.content?.bodyHtml ?? null,
     color: p.attributes?.color ?? null,
     sectionId: p.relationships?.section?.data?.id ?? null,
     attachmentUrl: p.attributes?.content?.attachment?.url ?? null,

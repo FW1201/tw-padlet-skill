@@ -51,6 +51,7 @@ mkdir -p ~/.tw-edu-skills/padlet && echo '{"apiKey":"..."}' > ~/.tw-edu-skills/p
 - board id 是看板 URL 結尾 16-22 字元；`api/get-board.mjs` 可驗證。
 - AI recipe board 內容不可控：建完先 `list-posts` 檢視再補種。
 - 每支腳本輸出單行 JSON；`ok:false` 時照 `hint` 做。
+- 貼文成功前會先讀回內容核對 subject/body/分欄是否與送出的一致；核對不符不算成功（見常見錯誤的 `post-write-verification-failed`）。
 - 絕不輸出 API key。
 - 這裡沒有任何瀏覽器/登入自動化——見下方「為什麼沒有瀏覽器自動化」。
 
@@ -61,4 +62,5 @@ mkdir -p ~/.tw-edu-skills/padlet && echo '{"apiKey":"..."}' > ~/.tw-edu-skills/p
 | `MissingCredential` | 依 hint 引導老師設定 `PADLET_API_KEY` |
 | `Padlet API 401/403` | key 無效或方案不含 API |
 | `all-posts-failed` | 檢查 board id/欄位；`ok:false` 不可當成功回報 |
+| `post-write-verification-failed` | Padlet 回報 2xx 但讀回內容不符：貼文可能未完整寫入。看 `verification.expected`/`actual` 診斷哪個欄位不符；請老師到看板手動確認/修正該則貼文，先確認是否真的沒建立成功再決定要不要重貼，避免重複貼文。 |
 | schema 驗證失敗 | 錯誤含 zod issues；轉譯成老師聽得懂的欄位說明，不要原樣轉貼 |

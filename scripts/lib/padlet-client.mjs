@@ -93,6 +93,84 @@ export function buildPostPayload(post) {
   return body;
 }
 
+// Strip HTML tags and decode the handful of entities Padlet's rendered
+// bodyHtml is expected to contain, then collapse/trim whitespace. Used both
+// for post-write verification (comparing plain-text input against the
+// HTML-rendered response) and as the plain-text `body` field callers expect
+// from listPosts.
+export function htmlToPlainText(html) {
+  if (html == null) return "";
+  return String(html)
+    // Replace with a space, not "", so adjacent block tags (e.g. </p><p>)
+    // don't glue two words together with no separator.
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const normalizeText = (s) => (s == null ? "" : String(s).replace(/\s+/g, " ").trim());
+
+export class PostVerificationError extends Error {
+  constructor(message, { verification, postId } = {}) {
+    super(message);
+    this.name = "PostVerificationError";
+    this.verification = verification;
+    this.postId = postId;
+  }
+}
+
+/**
+ * Compare the post as sent (`expectedPost`, the flat BoardPost shape passed
+ * to buildPostPayload) against the post resource Padlet's API returned
+ * (`responsePostResource`, i.e. `res.data` from the POST response — no
+ * separate GET needed, the create response already echoes the full content).
+ * bodyHtml is normalized to plain text before comparison since Padlet wraps
+ * plain input in HTML (e.g. "text" -> "<p>text</p>") on a genuine success —
+ * comparing raw strings would false-fail every correct write.
+ */
+export function verifyPostWrite(expectedPost, responsePostResource) {
+  const actualContent = responsePostResource?.attributes?.content ?? {};
+  const mismatches = [];
+
+  const expectedSubject = normalizeText(expectedPost.subject);
+  const actualSubject = normalizeText(actualContent.subject);
+  if (expectedSubject !== actualSubject) mismatches.push("subject");
+
+  const expectedBody = normalizeText(expectedPost.body);
+  const actualBody = normalizeText(htmlToPlainText(actualContent.bodyHtml));
+  if (expectedBody !== actualBody) mismatches.push("body");
+
+  if (expectedPost.section !== undefined) {
+    const actualSectionId = responsePostResource?.relationships?.section?.data?.id ?? null;
+    if (actualSectionId !== expectedPost.section) mismatches.push("sectionId");
+  }
+
+  return {
+    ok: mismatches.length === 0,
+    mismatches,
+    verification: {
+      expected: {
+        subject: expectedPost.subject,
+        body: expectedPost.body,
+        ...(expectedPost.section !== undefined ? { sectionId: expectedPost.section } : {}),
+      },
+      actual: {
+        subject: actualContent.subject ?? null,
+        body: htmlToPlainText(actualContent.bodyHtml),
+        ...(expectedPost.section !== undefined
+          ? { sectionId: responsePostResource?.relationships?.section?.data?.id ?? null }
+          : {}),
+      },
+    },
+  };
+}
+
 export async function getBoard(boardId) {
   return request(`${PADLET_BASE_URL}/boards/${boardId}`, {
     query: { include: "posts,sections,comments" },
@@ -111,11 +189,26 @@ export async function listSections(boardId) {
     .map((s) => ({ id: s.id, title: s.attributes?.title ?? "" }));
 }
 
+// Padlet's API accepts a 2xx write whose content doesn't actually match what
+// was sent (confirmed root cause: the response echoes the body under
+// `content.bodyHtml`, a different field name than the `content.body` used to
+// write it — a naive reader checking `content.body` on the response always
+// sees empty, regardless of whether the write worked). addPost is fail-closed
+// by default: a 2xx response that doesn't verify throws PostVerificationError
+// rather than being reported as success.
 export async function addPost(boardId, post) {
-  return request(`${PADLET_BASE_URL}/boards/${boardId}/posts`, {
+  const res = await request(`${PADLET_BASE_URL}/boards/${boardId}/posts`, {
     method: "POST",
     json: buildPostPayload(post),
   });
+  const check = verifyPostWrite(post, res.data);
+  if (!check.ok) {
+    throw new PostVerificationError(
+      `Padlet 回報寫入成功（post ${res.data?.id}），但讀回內容與送出內容不符（${check.mismatches.join("、")}）——寫入可能未完整生效。`,
+      { verification: check.verification, postId: res.data?.id },
+    );
+  }
+  return res;
 }
 
 export async function createAiBoard({ prompt, role, workspaceId }) {
