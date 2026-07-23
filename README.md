@@ -1,64 +1,132 @@
 <p align="center"><img src="assets/logo.png" width="88" alt="Padlet logo"></p>
 
-# tw-padlet-skill
+# tw-padlet-skill 使用手冊
 
-> ⚠️ **非官方工具**：本套件**不是** Padlet 官方產品。它使用 Padlet **官方公開 REST API**（需付費方案的 API key，完全合規），不做任何瀏覽器自動化或登入。
+這是教師使用 Padlet 官方 REST API 的輔助工具，支援讀取看板、種入貼文、建立 Padlet AI recipe 看板，以及在既有貼文留下教師回饋。它不是 Padlet 官方產品，且不會使用瀏覽器自動化、登入、發布、指派或設定分享權限。
 
-台灣 K-12 教師用的 Padlet agent skill：只走官方 REST API，一句話把貼文 JSON 種進 Padlet 看板（既有看板或 AI 配方新建）。
+## 能力與限制
 
-自 [edu-agent-kit](https://github.com/FW1201/edu-agent-kit) 的 Padlet adapter 獨立而來（來源 commit `a7eaa0f`）。
-
-## 這套 skill 能做什麼
-
-老師把看板內容（種子貼文）給 agent，agent 透過官方 API 種入既有看板（老師先在 padlet.com 手動建好、給 board id），或用 AI 配方直接生成一個新看板再種貼文。
-
-⚠️ **能力邊界**：Padlet 官方 API 沒有「建立指定版面/自訂分欄名稱的空白看板」端點——這是 Playwright 才做得到的事，本輪已拿掉。同樣沒有 API 的還有訪客權限設定與匯出，這些請老師直接在 padlet.com 手動處理。
-
-## 快速上手
-
-```bash
-cd <skill-dir> && npm install                                    # 首次
-export PADLET_API_KEY=...                                        # 見下方申請方式
-node scripts/preflight.mjs                                       # 確認 key 已設定
-node scripts/run.mjs board.json --board-id <既有看板id>
-# 或用 AI 配方直接新建看板：
-node scripts/run.mjs board.json --ai-prompt "討論光合作用對氣候的影響"
-```
-
-## 自然指令範例
-
-| 老師說 | 觸發 |
+| 可以做 | 不能做（請在 Padlet 網站手動完成） |
 |---|---|
-| 「把這些討論題種到我這個看板」 | `run.mjs board.json --board-id <id>` |
-| 「用 AI 幫我生一個討論看板並種入這些內容」 | `run.mjs board.json --ai-prompt "..."` |
-| 「這個看板現在有哪些貼文？」 | `api/list-posts.mjs <board-id>`（唯讀） |
+| 讀取看板、貼文、貼文留言 | 建立指定版面或空白看板、建立欄位 |
+| 種入單則／批次貼文 | 設定訪客權限、分享、發布、指派 |
+| 新增單則／批次純文字教師留言 | 匯出 PDF、CSV 或 Excel |
+| 以 AI recipe 建立新看板 | 代替教師判斷學生回饋或處理個資 |
 
-## 功能總覽
+所有會改變 Padlet 的命令都必須在每次執行時附上 `--confirm-write`。沒有旗標，工具會在讀取檔案、金鑰或連線前停止。此旗標代表真實寫入，並非模擬模式。
 
-| 腳本 | 用途 | 輸入 | 輸出 |
-|---|---|---|---|
-| `scripts/preflight.mjs` | 前置檢查（API key 是否已設定） | — | `{ok, apiKey}` |
-| `scripts/run.mjs` | 一鍵種貼文（既有看板或 AI 配方新建） | `board.json --board-id\|--ai-prompt` | boardId/url/added/failed |
-| `scripts/api/get-board.mjs` | 讀看板（含欄位、貼文數） | `<board-id>` | 看板資料 |
-| `scripts/api/list-posts.mjs` | 列貼文 | `<board-id>` | 貼文陣列 |
-| `scripts/api/create-ai-board.mjs` | AI 生成看板（唯一 API 建板端點） | `--prompt` | boardId/url |
-| `scripts/api/add-post.mjs` | 加單篇貼文 | `<board-id> post.json` | postId/url |
-| `scripts/api/seed-board.mjs` | 批次種貼文（`run.mjs` 內部呼叫） | `board.json` | added/failed/notes |
+## 事前準備
 
-## API key（必要）
-
-至 [padlet.com/dashboard/settings/developers](https://padlet.com/dashboard/settings/developers) 申請（需付費方案），然後：
+需要 Node.js 18 以上與可使用官方 API 的 Padlet 方案。
 
 ```bash
-export PADLET_API_KEY=...
-# 或
-mkdir -p ~/.tw-edu-skills/padlet && echo '{"apiKey":"..."}' > ~/.tw-edu-skills/padlet/config.json && chmod 600 ~/.tw-edu-skills/padlet/config.json
+cd <skill-dir>
+npm install
+
+# 擇一設定，絕不可把真實 key 放進 board.json、comment.json、版本庫、網址或聊天紀錄
+export PADLET_API_KEY='...'
+# 或：建立權限受限本機設定檔
+mkdir -p ~/.tw-edu-skills/padlet
+printf '%s' '{"apiKey":"..."}' > ~/.tw-edu-skills/padlet/config.json
+chmod 600 ~/.tw-edu-skills/padlet/config.json
+
+node scripts/preflight.mjs
 ```
 
-## 為什麼沒有瀏覽器自動化
+前置檢查只回報金鑰是否存在，不會輸出金鑰。若失敗，請依 JSON 的 `hint` 修正；不要將 key 貼給 agent 或寫入教材資料。
 
-這套 skill 原本是雙路徑：有 API key 走官方 API，沒有則以 Playwright 操作網頁補 API 缺口（建空白看板、訪客權限、匯出）。Playwright 路徑一樣受「Google OAuth 拒絕自動化瀏覽器、選擇器驅動的 UI 自動化不穩定」的問題所苦。現在只保留完全合規、不需要瀏覽器的官方 API 路徑；API 做不到的事（建自訂版面空白看板、訪客權限、匯出）明確列為能力邊界，交給老師手動處理，不再嘗試用瀏覽器自動化補位。
+## 先預覽、再確認、最後寫入
 
-## License
+本工具沒有會連到外部服務的 dry-run。請使用下列唯讀命令作為安全預覽，再取得教師確認。任何寫入後，仍應到 Padlet 介面檢視呈現；這是驗證邊界，不能只看程式成功碼。
+
+```bash
+node scripts/api/get-board.mjs <board-id>
+node scripts/api/list-posts.mjs <board-id>
+node scripts/api/list-comments.mjs <board-id> <post-id>
+```
+
+`board-id` 是看板網址結尾的識別碼。先確認看板名稱、目標貼文、學生名單與回饋文字。針對學生的個別建議應先給教師草稿審閱，不應直接發布。
+
+## 建立貼文與看板
+
+`post.json` 範例：
+
+```json
+{
+  "subject": "暖身討論",
+  "body": "請用一句話描述你對光合作用的理解。",
+  "section": "第一組"
+}
+```
+
+確認後才執行：
+
+```bash
+node scripts/api/add-post.mjs <board-id> post.json --confirm-write
+node scripts/run.mjs board.json --board-id <board-id> --confirm-write
+
+# API 唯一的建板路徑：Padlet AI recipe。生成內容須由教師檢查。
+node scripts/run.mjs board.json --ai-prompt "國中自然：光合作用討論" --role teacher --confirm-write
+```
+
+輸出中的 `ok:true`、`added` 與 `failed` 必須一起判讀。貼文會比對回傳內容的標題、本文與分欄；若出現 `post-write-verification-failed`，先開啟看板確認，絕不可直接重送。
+
+## 教師留言
+
+留言僅接收純文字，工具會跳脫 HTML 特殊字元，避免將輸入當作網頁標記。單筆 `comment.json`：
+
+```json
+{ "text": "請補上資料來源，並說明你選擇此答案的理由。" }
+```
+
+```bash
+# 先讀目前留言，確認對象與是否已留言
+node scripts/api/list-comments.mjs <board-id> <post-id>
+
+# 再進行真實寫入
+node scripts/api/add-comment.mjs <board-id> <post-id> comment.json --confirm-write
+```
+
+批次 `comments.json` 為陣列：
+
+```json
+[
+  { "postId": "post_A", "text": "請補上資料來源。" },
+  { "postId": "post_B", "text": "論點清楚，可再引用一項證據。" }
+]
+```
+
+```bash
+node scripts/api/seed-comments.mjs <board-id> comments.json --confirm-write
+```
+
+批次會一則一則送出，並跳過同一貼文中相同的既有留言與同批重複資料。建立後會核對回傳文字和所屬貼文。API 回應 429 時，工具立刻停止、不會自動重試，並回報 `retryAfterSeconds` 和已建立項目；等待後先重新列出留言，重新確認範圍，再以新的 `--confirm-write` 執行。
+
+## 輸出與常見問題
+
+所有命令輸出單行 JSON；只有 `ok:true` 才是可繼續的成功結果。
+
+| 回應 | 意義與下一步 |
+|---|---|
+| `confirmation-required` | 尚未取得本次外部寫入確認；核對後加上 `--confirm-write`。 |
+| `rate-limited` | 已停止，沒有自動重試；等待 `retryAfterSeconds` 後先唯讀檢查。 |
+| `comment-write-verification-failed` | 回傳內容或所屬貼文不符，先到 Padlet 手動確認。 |
+| `post-write-verification-failed` | 回傳貼文和原輸入不符，禁止盲目重送。 |
+| `post-not-on-board` | 提供的貼文不在確認的看板中；未寫入，先用 `list-posts` 核對。 |
+| 401／403／`MissingCredential` | API key 不存在、無效或無權限；設定／權限由教師管理，勿外洩 key。 |
+
+## 維護與重新驗證
+
+平台 API 可能變動。維護者更新時應先下載／閱讀當日 Padlet 官方 API 文件，確認 JSON:API 欄位、`POST /posts/{post_hashid}/comments` 的 `htmlContent`、回傳 comment 的 `relationships.post`，再更新測試。執行：
+
+```bash
+npm test
+for f in scripts/lib/*.mjs scripts/api/*.mjs scripts/*.mjs; do node --check "$f"; done
+git diff --check
+```
+
+這些測試全以 mock API 執行，不會寫入 Padlet。實際平台驗證必須另行取得教師同意，使用一次性測試內容並保持未發布／未指派狀態。
+
+## 授權
 
 MIT

@@ -7,8 +7,8 @@
 // <input>` shape teachers/agents see elsewhere.
 //
 // Usage:
-//   node scripts/run.mjs board.json --board-id <existing-board-id>
-//   node scripts/run.mjs board.json --ai-prompt "..." [--role teacher]
+//   node scripts/run.mjs board.json --board-id <existing-board-id> --confirm-write
+//   node scripts/run.mjs board.json --ai-prompt "..." [--role teacher] --confirm-write
 //
 // Seeding posts onto a board (existing or freshly AI-generated) is an
 // external write visible to anyone with the board link — the printed summary
@@ -18,6 +18,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireConfirmWrite } from "./lib/write-confirmation.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,14 +64,15 @@ if (!boardPath || (!boardId && !aiPrompt)) {
   out({
     ok: false,
     error: "usage",
-    hint: 'node scripts/run.mjs <board.json> (--board-id <既有看板id> | --ai-prompt "..." [--role teacher])',
+    hint: 'node scripts/run.mjs <board.json> (--board-id <既有看板id> | --ai-prompt "..." [--role teacher]) --confirm-write',
   });
   process.exit(1);
 }
+if (!requireConfirmWrite()) process.exit(1);
 
 const seedArgs = boardId
-  ? [boardPath, "--board-id", boardId]
-  : [boardPath, "--ai-prompt", aiPrompt, "--role", role];
+  ? [boardPath, "--board-id", boardId, "--confirm-write"]
+  : [boardPath, "--ai-prompt", aiPrompt, "--role", role, "--confirm-write"];
 
 const result = runScript("api/seed-board.mjs", seedArgs);
 if (!result.ok) {

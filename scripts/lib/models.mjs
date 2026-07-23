@@ -21,6 +21,27 @@ export const BoardPost = z
   })
   .passthrough();
 
+// Teacher comments intentionally accept plain text only.  The API endpoint
+// accepts HTML, but letting caller-provided markup through would turn a
+// feedback note into an injection surface and makes duplicate detection less
+// reliable.  padlet-client.mjs escapes this text before it reaches Padlet.
+export const TeacherComment = z
+  .object({
+    text: z.string().trim().min(1).max(8000),
+  })
+  .passthrough();
+
+export const TeacherCommentBatch = z
+  .array(
+    z
+      .object({
+        postId: z.string().trim().min(1).max(200),
+        text: z.string().trim().min(1).max(8000),
+      })
+      .passthrough(),
+  )
+  .min(1);
+
 export const Board = z
   .object({
     title: z.string().min(1).max(300),

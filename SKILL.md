@@ -1,66 +1,63 @@
 ---
 name: tw-padlet-skill
-description: Use when a teacher wants to seed or read a Padlet board via the official REST API — 種入貼文、讀看板、AI 配方建板。Triggers include Padlet, board.json, 看板, 貼文牆, 討論板, seed posts.
+description: Use when teachers need to inspect a Padlet board, seed approved posts, or add teacher feedback through Padlet's official REST API, especially when API-key safety, duplicate comments, rate limits, or an explicit external-write confirmation are required.
 ---
 
-# tw-padlet-skill
+# Padlet 教師看板 API
 
-只走 Padlet 官方 REST API（需付費方案的 API key），不做任何瀏覽器自動化或登入。API 沒有建空白看板的端點，只能用 AI 配方建板，或種貼文進老師自己先在 padlet.com 手動建好的既有看板。
+本 Skill 僅使用 Padlet 官方 REST API；不使用瀏覽器自動化、不登入、不發布、不調整分享權限。核心原則是：先讀取與確認，只有老師明確確認後才以 `--confirm-write` 寫入。
 
-## 首次使用
+## 使用時機與限制
+
+- 適用：讀取既有看板／貼文、在既有貼文加入教師留言、批次種貼文，或用 Padlet AI recipe 建立新看板。
+- 不適用：建立指定版面或空白看板、建立欄位、設定訪客權限、匯出、指派或發布；請教師直接在 padlet.com 完成。
+- 需要付費方案的 `PADLET_API_KEY`。金鑰只能置於環境變數或 `~/.tw-edu-skills/padlet/config.json`（`chmod 600`）；不可放入 JSON、提示詞、網址、輸出或紀錄。
+
+## 固定工作流
+
+1. 先請教師確認看板、貼文、留言對象與文字；涉及學生個人回饋時，先提供草稿而不是直接寫入。
+2. 執行 `node scripts/preflight.mjs`，再用 `get-board`、`list-posts` 或 `list-comments` 檢查目標。這些是唯讀操作。
+3. 顯示將寫入的內容與範圍，取得本次明確同意。
+4. 寫入命令必須加入 `--confirm-write`。沒有此旗標時，程式會在讀檔、讀取金鑰和網路請求前停止。
+5. 讀取 JSON 回應：僅 `ok:true` 且驗證通過才算成功。保留輸出與原始資料，並由教師到 Padlet 檢視實際呈現。
+
+目前沒有「模擬但仍連線」的 dry-run；唯讀命令是唯一安全預覽。`--confirm-write` 是真實外部寫入的界線，不能當成 dry-run。
+
+## 留言
+
+留言輸入一律為純文字 JSON，例如 `{"text":"請補上資料來源。"}`。程式會將特殊字元安全轉成 HTML，建立後比對 Padlet 回傳的內容與所屬貼文；不符即失敗，絕不自動重送。
 
 ```bash
-cd <skill-dir> && npm install
+# 唯讀
+node scripts/api/list-comments.mjs <board-id> <post-id>
+
+# 單則留言（真實寫入）
+node scripts/api/add-comment.mjs <board-id> <post-id> comment.json --confirm-write
+
+# 批次留言 JSON 是 [{"postId":"...","text":"..."}]
+node scripts/api/seed-comments.mjs <board-id> comments.json --confirm-write
 ```
 
-只在 `node_modules/` 不存在時執行。
+批次為序列寫入；同一貼文、同一正規化文字的既有留言或同批重複資料會跳過。HTTP 429 會立刻停止，不重試，輸出 `retryAfterSeconds` 與已建立數；等待後先再列出留言，才由教師重新確認執行。
 
-## 設定 API key（必要，本 skill 無此 key 無法使用）
-
-至 [padlet.com/dashboard/settings/developers](https://padlet.com/dashboard/settings/developers) 申請（需付費方案），然後：
+## 貼文／看板
 
 ```bash
-export PADLET_API_KEY=...
-# 或
-mkdir -p ~/.tw-edu-skills/padlet && echo '{"apiKey":"..."}' > ~/.tw-edu-skills/padlet/config.json && chmod 600 ~/.tw-edu-skills/padlet/config.json
+node scripts/api/get-board.mjs <board-id>
+node scripts/api/list-posts.mjs <board-id>
+node scripts/api/add-post.mjs <board-id> post.json --confirm-write
+node scripts/run.mjs board.json --board-id <board-id> --confirm-write
+node scripts/run.mjs board.json --ai-prompt "課程討論主題" --confirm-write
 ```
 
-`node scripts/preflight.mjs` 確認 key 是否已設定（只檢查存在與否，不會讀出或顯示內容）。
+`run.mjs`、`add-post.mjs`、`seed-board.mjs` 與 `create-ai-board.mjs` 都同樣必須有 `--confirm-write`。貼文的 subject、body、欄位讀回不符時不算成功；先人工確認再決定是否重送，避免重複貼文。
 
-## 工作流程
+## 失敗處理
 
-1. **前置檢查**：`node scripts/preflight.mjs` → `{ok:false, apiKey:false}` 時先引導老師設定 key。
-2. **種貼文（一鍵）**：
-   ```bash
-   node scripts/run.mjs board.json --board-id <老師既有看板id>
-   # 或用 AI 配方建立新看板：
-   node scripts/run.mjs board.json --ai-prompt "討論光合作用對氣候的影響" --role teacher
-   ```
-   輸出 `boardId`/`url`/`added`/`failed`/`notes`——**這是外部寫入的確認點**：貼文會直接出現在看板上，`notes` 一定要轉述給老師（欄位對應失敗、非圖片附件渲染未經驗證等）。
-3. **細部控制**（不需要 run.mjs 時）：
-   - `node scripts/api/get-board.mjs <board-id>`：讀看板（含欄位、貼文數）。
-   - `node scripts/api/list-posts.mjs <board-id>`：列貼文。
-   - `node scripts/api/create-ai-board.mjs --prompt "..."`：AI 生成看板（唯一 API 建板端點，非同步輪詢約 2 分鐘）。
-   - `node scripts/api/add-post.mjs <board-id> post.json`：加單篇貼文。
-   - `node scripts/api/seed-board.mjs board.json (--board-id X | --ai-prompt "...")`：`run.mjs` 內部呼叫的就是這支。
-
-4. **API 做不到的事，請老師直接到 padlet.com 手動處理**：建空白看板＋自訂版面/分欄名稱、訪客權限設定、匯出 PDF/CSV/Excel。
-
-## 規則
-
-- board id 是看板 URL 結尾 16-22 字元；`api/get-board.mjs` 可驗證。
-- AI recipe board 內容不可控：建完先 `list-posts` 檢視再補種。
-- 每支腳本輸出單行 JSON；`ok:false` 時照 `hint` 做。
-- 貼文成功前會先讀回內容核對 subject/body/分欄是否與送出的一致；核對不符不算成功（見常見錯誤的 `post-write-verification-failed`）。
-- 絕不輸出 API key。
-- 這裡沒有任何瀏覽器/登入自動化——見下方「為什麼沒有瀏覽器自動化」。
-
-## 常見錯誤
-
-| 症狀 | 處理 |
+| 回應 | 處理 |
 |---|---|
-| `MissingCredential` | 依 hint 引導老師設定 `PADLET_API_KEY` |
-| `Padlet API 401/403` | key 無效或方案不含 API |
-| `all-posts-failed` | 檢查 board id/欄位；`ok:false` 不可當成功回報 |
-| `post-write-verification-failed` | Padlet 回報 2xx 但讀回內容不符：貼文可能未完整寫入。看 `verification.expected`/`actual` 診斷哪個欄位不符；請老師到看板手動確認/修正該則貼文，先確認是否真的沒建立成功再決定要不要重貼，避免重複貼文。 |
-| schema 驗證失敗 | 錯誤含 zod issues；轉譯成老師聽得懂的欄位說明，不要原樣轉貼 |
+| `confirmation-required` | 先確認目標與內容，再明確加入 `--confirm-write`。 |
+| `rate-limited` | 不重試；等待 `retryAfterSeconds`，重新讀取，再取得確認。 |
+| `*-write-verification-failed` | 先到 Padlet 檢查，禁止自動或盲目重送。 |
+| `post-not-on-board` | 提供的貼文不在已確認看板；未寫入，先用 `list-posts` 核對。 |
+| `MissingCredential`、401、403 | 只引導設定或檢查權限；不可要求貼出 API key。 |

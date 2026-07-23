@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Usage: node scripts/api/add-post.mjs <board-id> <post.json>
+// Usage: node scripts/api/add-post.mjs <board-id> <post.json> --confirm-write
 // post.json: {subject?, body, media?, section?(label 或 section id), color?}
 import { readFile } from "node:fs/promises";
 import { BoardPost } from "../lib/models.mjs";
@@ -10,13 +10,15 @@ import {
   MissingCredentialError,
   PostVerificationError,
 } from "../lib/padlet-client.mjs";
+import { requireConfirmWrite } from "../lib/write-confirmation.mjs";
 
 const out = (o) => console.log(JSON.stringify(o));
 const [, , boardId, file] = process.argv;
 if (!boardId || !file) {
-  out({ ok: false, error: "usage", hint: "node scripts/api/add-post.mjs <board-id> <post.json>" });
+  out({ ok: false, error: "usage", hint: "node scripts/api/add-post.mjs <board-id> <post.json> --confirm-write" });
   process.exit(1);
 }
+if (!requireConfirmWrite()) process.exit(1);
 try {
   const post = BoardPost.parse(JSON.parse(await readFile(file, "utf8")));
   let resolved = post;

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Create a board via the async AI-recipe endpoint (the ONLY API creation path;
 // there is no blank-board endpoint). Polls until ready (~2 min max).
-// Usage: node scripts/api/create-ai-board.mjs --prompt "..." [--role teacher] [--workspace-id X]
+// Usage: node scripts/api/create-ai-board.mjs --prompt "..." [--role teacher] [--workspace-id X] --confirm-write
 import { createAiBoardAndWait, MissingCredentialError } from "../lib/padlet-client.mjs";
+import { requireConfirmWrite } from "../lib/write-confirmation.mjs";
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -11,9 +12,10 @@ function arg(name) {
 const out = (o) => console.log(JSON.stringify(o));
 const prompt = arg("prompt");
 if (!prompt) {
-  out({ ok: false, error: "usage", hint: "node scripts/api/create-ai-board.mjs --prompt \"...\" [--role teacher] [--workspace-id X]" });
+  out({ ok: false, error: "usage", hint: "node scripts/api/create-ai-board.mjs --prompt \"...\" [--role teacher] [--workspace-id X] --confirm-write" });
   process.exit(1);
 }
+if (!requireConfirmWrite()) process.exit(1);
 try {
   const created = await createAiBoardAndWait({
     prompt,

@@ -7,7 +7,22 @@ import assert from "node:assert/strict";
 
 process.env.PADLET_API_KEY = "test-key-not-real";
 
-const { buildPostPayload, createAiBoardAndWait, addPost, verifyPostWrite, htmlToPlainText, PostVerificationError } =
+const {
+  buildPostPayload,
+  createAiBoardAndWait,
+  addPost,
+  verifyPostWrite,
+  htmlToPlainText,
+  PostVerificationError,
+  buildCommentPayload,
+  verifyCommentWrite,
+  createComment,
+  createCommentsSafely,
+  listComments,
+  CommentVerificationError,
+  RateLimitError,
+  PostBoardMismatchError,
+} =
   await import("../scripts/lib/padlet-client.mjs");
 
 test("buildPostPayload converts an empty body to null (Padlet rejects empty strings)", () => {
@@ -175,6 +190,210 @@ test("addPost throws PostVerificationError (with verification + postId) when rea
         return true;
       },
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// --- comments --------------------------------------------------------------
+// These cases intentionally precede the implementation.  Padlet's official
+// endpoint accepts sanitized HTML, while this Skill's teacher-facing input is
+// always plain text: unsafe characters must become text rather than markup.
+
+test("buildCommentPayload converts plain text to safely escaped paragraph HTML", () => {
+  const payload = buildCommentPayload({ text: "教師：<確認> & 回覆\n第二行" });
+  assert.deepEqual(payload, {
+    data: {
+      type: "comment",
+      attributes: { htmlContent: "<p>教師：&lt;確認&gt; &amp; 回覆<br/>第二行</p>" },
+    },
+  });
+});
+
+test("verifyCommentWrite fails closed when returned comment belongs to another post or has different content", () => {
+  const expected = { text: "請補充來源" };
+  const wrongPost = {
+    attributes: { htmlContent: "<p>請補充來源</p>" },
+    relationships: { post: { data: { id: "post-other" } } },
+  };
+  const wrongContent = {
+    attributes: { htmlContent: "<p>不同內容</p>" },
+    relationships: { post: { data: { id: "post-1" } } },
+  };
+  assert.deepEqual(verifyCommentWrite("post-1", expected, wrongPost).mismatches, ["postId"]);
+  assert.deepEqual(verifyCommentWrite("post-1", expected, wrongContent).mismatches, ["text"]);
+});
+
+test("listComments reads only comments related to the requested post from the board include", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url) => {
+      assert.match(String(url), /boards\/board-1/);
+      return {
+        ok: true,
+        text: async () => JSON.stringify({
+          data: { id: "board-1" },
+          included: [
+            { id: "comment-1", type: "comment", attributes: { content: "保留" }, relationships: { post: { data: { id: "post-1" } } } },
+            { id: "comment-2", type: "comment", attributes: { content: "排除" }, relationships: { post: { data: { id: "post-2" } } } },
+          ],
+        }),
+      };
+    };
+    const comments = await listComments("board-1", "post-1");
+    assert.deepEqual(comments.map((comment) => comment.id), ["comment-1"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("createComment verifies its response before reporting success", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url, init = {}) => {
+      if ((init.method ?? "GET") === "GET") return { ok: true, text: async () => JSON.stringify({ data: { id: "board-1" }, included: [{ id: "comment-1", type: "comment", attributes: { htmlContent: "<p>已閱讀</p>" }, relationships: { post: { data: { id: "post-1" } } } }] }) };
+      assert.match(String(url), /posts\/post-1\/comments/);
+      assert.equal(init.method, "POST");
+      assert.equal(JSON.parse(init.body).data.attributes.htmlContent, "<p>已閱讀</p>");
+      return {
+        ok: true,
+        text: async () => JSON.stringify({
+          data: {
+            id: "comment-1",
+            attributes: { htmlContent: "<p>已閱讀</p>" },
+            relationships: { post: { data: { id: "post-1" } } },
+          },
+        }),
+      };
+    };
+    const result = await createComment("board-1", "post-1", { text: "已閱讀" });
+    assert.equal(result.data.id, "comment-1");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("createComment throws CommentVerificationError when read-back differs", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({
+      ok: true,
+      text: async () => JSON.stringify({
+        data: {
+          id: "comment-2",
+          attributes: { htmlContent: "<p>意外內容</p>" },
+          relationships: { post: { data: { id: "post-1" } } },
+        },
+      }),
+    });
+    await assert.rejects(
+      createComment("board-1", "post-1", { text: "預期內容" }),
+      (err) => err instanceof CommentVerificationError && err.commentId === "comment-2",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("createCommentsSafely skips existing and in-batch duplicates without issuing duplicate writes", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    let calls = 0;
+    globalThis.fetch = async (_url, init = {}) => {
+      calls += 1;
+      if ((init.method ?? "GET") === "GET") {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            data: { id: "board-1" },
+            included: [
+              { id: "post-1", type: "post" },
+              {
+                id: "existing-1", type: "comment", attributes: { content: "已存在" },
+                relationships: { post: { data: { id: "post-1" } } },
+              },
+              ...(calls > 2 ? [{ id: "new-1", type: "comment", attributes: { htmlContent: "<p>新增</p>" }, relationships: { post: { data: { id: "post-1" } } } }] : []),
+            ],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        text: async () => JSON.stringify({
+          data: {
+            id: "new-1", attributes: { htmlContent: "<p>新增</p>" },
+            relationships: { post: { data: { id: "post-1" } } },
+          },
+        }),
+      };
+    };
+    const result = await createCommentsSafely("board-1", [
+      { postId: "post-1", text: "已存在" },
+      { postId: "post-1", text: "新增" },
+      { postId: "post-1", text: "新增" },
+    ]);
+    assert.deepEqual(result, { created: [{ postId: "post-1", commentId: "new-1" }], skipped: 2 });
+    assert.equal(calls, 3, "one initial read, one POST, and one readback");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("createCommentsSafely stops after HTTP 429 and reports Retry-After without sending later writes", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    let calls = 0;
+    globalThis.fetch = async (_url, init = {}) => {
+      calls += 1;
+      if ((init.method ?? "GET") === "GET") {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            data: { id: "board-1" },
+            included: [{ id: "post-1", type: "post" }, { id: "post-2", type: "post" }],
+          }),
+        };
+      }
+      return {
+        ok: false,
+        status: 429,
+        headers: { get: (name) => (name.toLowerCase() === "retry-after" ? "17" : null) },
+        text: async () => JSON.stringify({ errors: [{ detail: "too many requests" }] }),
+      };
+    };
+    await assert.rejects(
+      createCommentsSafely("board-1", [
+        { postId: "post-1", text: "第一則" },
+        { postId: "post-2", text: "不可送出" },
+      ]),
+      (err) => err instanceof RateLimitError && err.retryAfterSeconds === 17,
+    );
+    assert.equal(calls, 2, "must stop before the second POST");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("createCommentsSafely rejects a post that is not included in the confirmed board before any POST", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    let calls = 0;
+    globalThis.fetch = async (_url, init = {}) => {
+      calls += 1;
+      assert.equal(init.method ?? "GET", "GET", "mismatched post must never be written");
+      return {
+        ok: true,
+        text: async () => JSON.stringify({
+          data: { id: "board-1" },
+          included: [{ id: "post-1", type: "post" }],
+        }),
+      };
+    };
+    await assert.rejects(
+      createCommentsSafely("board-1", [{ postId: "post-other", text: "不應送出" }]),
+      (err) => err instanceof PostBoardMismatchError && err.postIds.includes("post-other"),
+    );
+    assert.equal(calls, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

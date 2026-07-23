@@ -2,7 +2,7 @@
 // Seed a Padlet board with posts from board.json — either an existing board
 // (--board-id) or a new AI recipe board (--ai-prompt; the only API creation path).
 // Ported seed workflow from edu-agent-kit padlet tools.ts @ a7eaa0f.
-// Usage: node scripts/api/seed-board.mjs <board.json> (--board-id X | --ai-prompt "...") [--role teacher]
+// Usage: node scripts/api/seed-board.mjs <board.json> (--board-id X | --ai-prompt "...") [--role teacher] --confirm-write
 import { readFile } from "node:fs/promises";
 import { Board } from "../lib/models.mjs";
 import {
@@ -13,7 +13,9 @@ import {
   resolveSeedSections,
   MissingCredentialError,
   PostVerificationError,
+  RateLimitError,
 } from "../lib/padlet-client.mjs";
+import { requireConfirmWrite } from "../lib/write-confirmation.mjs";
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -27,9 +29,10 @@ const aiPrompt = arg("ai-prompt");
 const role = arg("role") ?? "teacher";
 
 if (!file || (!boardId && !aiPrompt)) {
-  out({ ok: false, error: "usage", hint: "node scripts/api/seed-board.mjs <board.json> (--board-id X | --ai-prompt \"...\") [--role teacher]。API 無法建空白看板，只能種到既有看板或 AI 生成看板。" });
+  out({ ok: false, error: "usage", hint: "node scripts/api/seed-board.mjs <board.json> (--board-id X | --ai-prompt \"...\") [--role teacher] --confirm-write。API 無法建空白看板，只能種到既有看板或 AI 生成看板。" });
   process.exit(1);
 }
+if (!requireConfirmWrite()) process.exit(1);
 
 try {
   const board = Board.parse(JSON.parse(await readFile(file, "utf8")));
@@ -52,6 +55,10 @@ try {
       await addPost(boardId, post);
       added += 1;
     } catch (err) {
+      if (err instanceof RateLimitError) {
+        err.batch = { added, errors, verificationFailures };
+        throw err;
+      }
       errors.push(String(err?.message ?? err));
       if (err instanceof PostVerificationError) {
         verificationFailures.push({ postId: err.postId ?? null, verification: err.verification });
@@ -93,7 +100,9 @@ try {
   if (!ok) process.exitCode = 1;
 } catch (err) {
   let hint;
-  if (err instanceof MissingCredentialError) {
+  if (err instanceof RateLimitError) {
+    out({ ok: false, error: "rate-limited", retryAfterSeconds: err.retryAfterSeconds, partial: err.batch, hint: "批次已立即停止；請等待後先檢查看板，再重新確認並執行。" });
+  } else if (err instanceof MissingCredentialError) {
     hint = err.message;
   } else if (err?.issues) {
     const fields = err.issues.map((i) => i.path.join(".")).join("、");

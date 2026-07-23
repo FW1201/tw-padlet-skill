@@ -12,6 +12,16 @@ const CONFIG_PATH = path.join(os.homedir(), ".tw-edu-skills", "padlet", "config.
 
 export class MissingCredentialError extends Error {}
 
+/** A 429 is intentionally terminal for a batch: callers must report it and
+ * wait for Padlet's declared interval before a new, explicit run. */
+export class RateLimitError extends Error {
+  constructor(message, { retryAfterSeconds } = {}) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfterSeconds = retryAfterSeconds ?? null;
+  }
+}
+
 export async function hasApiKey() {
   try {
     await apiKey();
@@ -55,7 +65,20 @@ async function request(url, { method = "GET", json, query } = {}) {
   if (!res.ok) {
     const detail =
       body?.errors?.map((e) => e.detail ?? e.title).join("; ") ?? text.slice(0, 300);
-    // Status + Padlet error message only — never request headers.
+    if (res.status === 429) {
+      const retryAfter = res.headers?.get?.("retry-after") ?? null;
+      const retryAfterSeconds = /^\d+$/.test(retryAfter ?? "")
+        ? Number(retryAfter)
+        : Number.isFinite(Date.parse(retryAfter ?? ""))
+          ? Math.max(0, Math.ceil((Date.parse(retryAfter) - Date.now()) / 1000))
+          : null;
+      throw new RateLimitError(
+        `Padlet API 429: ${detail || "rate limited"}${retryAfterSeconds != null ? `；請至少等待 ${retryAfterSeconds} 秒後，以新的明確確認重新執行。` : "；請依 Padlet 的速率限制稍後再試。"}`,
+        { retryAfterSeconds },
+      );
+    }
+    // Status + Padlet error message only — never request headers (except the
+    // Retry-After value on 429, which is surfaced as a duration only).
     throw new Error(`Padlet API ${res.status}: ${detail}`);
   }
   return body;
@@ -187,6 +210,149 @@ export async function listSections(boardId) {
   return (board.included ?? [])
     .filter((e) => e.type === "section")
     .map((s) => ({ id: s.id, title: s.attributes?.title ?? "" }));
+}
+
+const escapeHtml = (text) =>
+  String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+/** Convert a teacher's plain-text feedback to the API's sanitized HTML field. */
+export function plainTextToCommentHtml(text) {
+  return `<p>${escapeHtml(text).replace(/\r?\n/g, "<br/>")}</p>`;
+}
+
+/** Map a plain-text teacher comment to Padlet's JSON:API resource body. */
+export function buildCommentPayload(comment) {
+  return {
+    data: {
+      type: "comment",
+      attributes: { htmlContent: plainTextToCommentHtml(comment.text) },
+    },
+  };
+}
+
+export class CommentVerificationError extends Error {
+  constructor(message, { verification, commentId } = {}) {
+    super(message);
+    this.name = "CommentVerificationError";
+    this.verification = verification;
+    this.commentId = commentId;
+  }
+}
+
+export class PostBoardMismatchError extends Error {
+  constructor(boardId, postIds) {
+    super(`指定的貼文不屬於已確認的看板 ${boardId}：${postIds.join("、")}。已停止，未送出任何留言。`);
+    this.name = "PostBoardMismatchError";
+    this.boardId = boardId;
+    this.postIds = postIds;
+  }
+}
+
+/** Verify the response against both feedback text and its intended post. */
+export function verifyCommentWrite(postId, expectedComment, responseCommentResource) {
+  const attrs = responseCommentResource?.attributes ?? {};
+  const actualPostId = responseCommentResource?.relationships?.post?.data?.id ?? null;
+  const actualText = htmlToPlainText(attrs.htmlContent ?? attrs.content ?? "");
+  const expectedText = normalizeText(expectedComment.text);
+  const mismatches = [];
+  if (actualPostId !== postId) mismatches.push("postId");
+  if (normalizeText(actualText) !== expectedText) mismatches.push("text");
+  return {
+    ok: mismatches.length === 0,
+    mismatches,
+    verification: {
+      expected: { postId, text: expectedComment.text },
+      actual: { postId: actualPostId, text: actualText },
+    },
+  };
+}
+
+/**
+ * Board reads include comments.  Padlet does not document a separate comment
+ * listing endpoint, so this is the official read path used for duplicate
+ * detection and teacher inspection.
+ */
+export async function listComments(boardId, postId) {
+  const board = await getBoard(boardId);
+  return (board.included ?? []).filter(
+    (entry) => entry.type === "comment" && entry.relationships?.post?.data?.id === postId,
+  );
+}
+
+/** POST a comment then fail closed unless Padlet's returned object verifies. */
+export async function createComment(boardId, postId, comment) {
+  const res = await request(`${PADLET_BASE_URL}/posts/${encodeURIComponent(postId)}/comments`, {
+    method: "POST",
+    json: buildCommentPayload(comment),
+  });
+  const check = verifyCommentWrite(postId, comment, res.data);
+  if (!check.ok) {
+    throw new CommentVerificationError(
+      `Padlet 回報寫入成功（comment ${res.data?.id}），但讀回內容或所屬貼文不符（${check.mismatches.join("、")}）——請先到看板確認，勿直接重送。`,
+      { verification: check.verification, commentId: res.data?.id },
+    );
+  }
+  const persisted = (await listComments(boardId, postId)).find((entry) => entry.id === res.data?.id);
+  const readback = verifyCommentWrite(postId, comment, persisted);
+  if (!readback.ok) {
+    throw new CommentVerificationError(
+      `Padlet 回報寫入成功（comment ${res.data?.id}），但看板讀回找不到或不符（${readback.mismatches.join("、")}）——請先到看板確認，勿直接重送。`,
+      { verification: readback.verification, commentId: res.data?.id },
+    );
+  }
+  return res;
+}
+
+const commentDuplicateKey = (postId, text) => JSON.stringify([postId, normalizeText(text)]);
+
+/**
+ * Serial, fail-closed batch writer.  Existing board comments and earlier
+ * entries in the same batch share one duplicate set.  A RateLimitError is
+ * deliberately propagated immediately, so no later write is attempted.
+ */
+export async function createCommentsSafely(boardId, comments) {
+  const board = await getBoard(boardId);
+  const boardPostIds = new Set(
+    (board.included ?? []).filter((entry) => entry.type === "post").map((entry) => entry.id),
+  );
+  const unknownPostIds = [...new Set(comments.map((comment) => comment.postId))].filter(
+    (postId) => !boardPostIds.has(postId),
+  );
+  if (unknownPostIds.length > 0) throw new PostBoardMismatchError(boardId, unknownPostIds);
+  const known = new Set(
+    (board.included ?? [])
+      .filter((entry) => entry.type === "comment")
+      .map((entry) =>
+        commentDuplicateKey(
+          entry.relationships?.post?.data?.id ?? "",
+          htmlToPlainText(entry.attributes?.htmlContent ?? entry.attributes?.content ?? ""),
+        ),
+      ),
+  );
+  const created = [];
+  let skipped = 0;
+  for (const comment of comments) {
+    const key = commentDuplicateKey(comment.postId, comment.text);
+    if (known.has(key)) {
+      skipped += 1;
+      continue;
+    }
+    let res;
+    try {
+      res = await createComment(boardId, comment.postId, comment);
+    } catch (err) {
+      if (err instanceof RateLimitError) err.batch = { created, skipped };
+      throw err;
+    }
+    known.add(key);
+    created.push({ postId: comment.postId, commentId: res.data.id });
+  }
+  return { created, skipped };
 }
 
 // Padlet's API accepts a 2xx write whose content doesn't actually match what
