@@ -13,6 +13,10 @@ description: Use when teachers need to inspect a Padlet board, seed approved pos
 - 不適用：建立指定版面或空白看板、建立欄位、設定訪客權限、匯出、指派或發布；請教師直接在 padlet.com 完成。
 - 需要付費方案的 `PADLET_API_KEY`。金鑰只能置於環境變數或 `~/.tw-edu-skills/padlet/config.json`（`chmod 600`）；不可放入 JSON、提示詞、網址、輸出或紀錄。
 
+## 錄製後的 API 動作
+
+教師以 Record-a-Skill 提供可檢視錄製後，才可依 [recorded-action-handoff.md](references/recorded-action-handoff.md) 將錄到的唯讀與確認節點接回 API 工作流；錄製本身不等於未來寫入授權。
+
 ## 固定工作流
 
 1. 先請教師確認看板、貼文、留言對象與文字；涉及學生個人回饋時，先提供草稿而不是直接寫入。
@@ -61,3 +65,14 @@ node scripts/run.mjs board.json --ai-prompt "課程討論主題" --confirm-write
 | `*-write-verification-failed` | 先到 Padlet 檢查，禁止自動或盲目重送。 |
 | `post-not-on-board` | 提供的貼文不在已確認看板；未寫入，先用 `list-posts` 核對。 |
 | `MissingCredential`、401、403 | 只引導設定或檢查權限；不可要求貼出 API key。 |
+
+## CLI 教學帳戶控制
+
+`tw-edtech-padlet` 提供與其他四套相同的 `doctor`、`catalog scan`、`validate`、`plan`、`run`、`verify` 契約。官方 API 已支援的貼文與留言優先走現有 API；版面、分享、可見度、指派與刪除等 UI 動作，必須等教師錄製 Canary action map 後才能執行。
+
+```bash
+tw-edtech-padlet doctor
+tw-edtech-padlet plan --action post.create --resource <board-id>
+```
+
+所有 API 寫入仍需 `--confirm-write`；分享、公開、指派、批次、學生資料與刪除還需要計畫確認碼與 `--confirm-impact`。API key 不得傳給 CLI 計畫、錄製、日誌或 Agent；429、讀回不符與權限問題一律停止，不自動重送。

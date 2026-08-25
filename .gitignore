@@ -1,1 +1,3 @@
 node_modules/
+*.roster.json
+.tw-edtech-runs/

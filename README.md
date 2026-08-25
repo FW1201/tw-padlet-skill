@@ -130,3 +130,13 @@ git diff --check
 ## 授權
 
 MIT
+
+## CLI 控制與下一輪錄製
+
+```bash
+tw-edtech-padlet doctor
+tw-edtech-padlet validate --input board.json
+tw-edtech-padlet plan --action post.create --resource <board-id>
+```
+
+貼文與留言仍優先使用官方 API；空白看板、版面、欄位、公開／分享、指派、成果與刪除改由下一輪 Canary 錄製建立 action map。API key 不得錄製或輸入 CLI 參數。所有寫入均以 `--confirm-write` 為第一道確認；公開、分享、批次、學生資料及刪除另需計畫碼與高風險確認。
