@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Board } from "./lib/models.mjs";
 import { runEdtechCli } from "./lib/edtech-cli.mjs";
+import { guardStudentRosterPlan } from "./lib/student-roster-plan.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const needsProtectedRoster = async () => {
@@ -19,7 +20,9 @@ const missingCommentTarget = () => {
   const postIndex = args.indexOf("--post");
   return command === "run" && args[args.indexOf("--action") + 1] === "comment.create" && !(postIndex >= 0 && args[postIndex + 1]);
 };
-if (missingCommentTarget()) {
+if (await guardStudentRosterPlan({ platform: "padlet", root })) {
+  // The guard emitted a roster-bound plan or a fail-closed diagnostic.
+} else if (missingCommentTarget()) {
   console.log(JSON.stringify({ ok: false, error: "post-required", hint: "建立留言前必須以 --post 指定目標貼文；不會嘗試任何外部寫入。", externalWriteAttempted: false }));
   process.exitCode = 1;
 } else if (await needsProtectedRoster()) {
