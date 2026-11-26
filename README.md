@@ -154,3 +154,5 @@ tw-edtech-padlet plan --action post.create --resource <board-id>
 ### Wildcard 教材契合檢查
 
 依 [設計指引](references/wildcard-game-design.md) 整理教材來源片段、目標、操作與回饋，參考 `assets/wildcard-alignment.example.json`，執行 `node scripts/tw-edtech-padlet.mjs wildcard-check --input assets/wildcard-alignment.example.json`。此檢查不會讀取或上傳原始素材，不能證明平台已讀到內容；請以介面與生成結果核對。
+
+專案既有 Skill 的安全升級及回復指引見 [跨 Agent 整合](references/portable-integration.md#專案安裝與升級)。
