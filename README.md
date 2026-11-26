@@ -1,158 +1,105 @@
 <p align="center"><img src="assets/logo.png" width="88" alt="Padlet logo"></p>
 
-# tw-padlet-skill 使用手冊
+# tw-padlet-skill
 
-這是教師使用 Padlet 官方 REST API 的輔助工具，支援讀取看板、種入貼文、建立 Padlet AI recipe 看板，以及在既有貼文留下教師回饋。它不是 Padlet 官方產品，且不會使用瀏覽器自動化、登入、發布、指派或設定分享權限。
+根據教材與課堂目標設計 Padlet 看板、Sandbox 協作活動、Arcade 與 Wildcard 情境遊戲，並以可用工具協助建立草稿。 目前版本：**0.5.0-rc.8（候選版）**。本專案為獨立教師工具，並非 Padlet 官方產品。
 
 ## 能力與限制
 
-| 可以做 | 不能做（請在 Padlet 網站手動完成） |
-|---|---|
-| 讀取看板、貼文、貼文留言 | 建立指定版面或空白看板、建立欄位 |
-| 種入單則／批次貼文 | 設定訪客權限、分享、發布、指派 |
-| 新增單則／批次純文字教師留言 | 匯出 PDF、CSV 或 Excel |
-| 以 AI recipe 建立新看板 | 代替教師判斷學生回饋或處理個資 |
+| 項目 | 本 Skill 協助 | 範圍與限制 |
+|---|---|---|
+| 看板與協作 | 設計分欄討論、貼文和素材連結；可使用宿主可用 connector 或既有 REST CLI | REST CLI 與 connector 可做的事情不同，必須以實際工具與權限為準 |
+| Sandbox | 規劃白板、便條及小組推理任務，並可查可用白板工具 | 不假設 connector 可建立所有畫布物件 |
+| Arcade | 依可用模板規劃配對、分類、排序等活動 | 選項及生成能力取決於宿主工具與帳號 |
+| Wildcard | 建立情境、玩家操作、素材與目標對應、可直接提交的提示詞 | 透過可用的既有登入介面生成；不是 Arcade 模板 connector 的同義詞 |
 
-所有會改變 Padlet 的命令都必須在每次執行時附上 `--confirm-write`。沒有旗標，工具會在讀取檔案、金鑰或連線前停止。此旗標代表真實寫入，並非模擬模式。
+## 從教材到平台
 
-## 事前準備
+1. 提供教材檔案或連結、適用年級、學習目標、課堂時間、設備與希望使用的模式。未能讀取的來源會標示，不根據檔名猜測。
+2. Agent 整理來源、目標、活動、操作、回饋與學習證據；使用 [教學 brief 範例](assets/lesson-brief-v1.example.json) 與 `lesson` 檢查來源 ID 和時間等結構。
+3. 根據實際可用的 connector／MCP、官方 API、CLI、已登入瀏覽器或人工匯入路徑準備內容；建立或上傳僅在使用者授權且工具可用時執行。
+4. 回報來源對應、產物、連結與已知狀態，列出跳過、格式轉換、媒體損失及需手動補入項目。逾時或結果不明時先核對現有資源，避免重複建立。
+5. **平台成果與最終驗收交由教師人工確認。** Agent 不自動試玩或模擬學生操作，也不將試玩列為交付條件；未經確認的內容不宣稱已驗收。分享、發布與指派依授權及當時工具能力處理。
 
-需要 Node.js 18 以上與可使用官方 API 的 Padlet 方案。
+## Wildcard：讓教材成為玩家操作
 
-```bash
-cd <skill-dir>
-npm install
+先將教師授權素材整理為「來源頁段 → 學習目標 → 遊戲情境及玩家操作 → 學科正確的回饋」。依教材選擇拖放、排序、配給、觀察或決策等方式，提示詞寫清情境、可見狀態、規則、錯誤復原與完成條件；不預設只有連續答題。分別記錄 Agent 已讀取、平台已附加及成果實際呈現的素材，不互相推論。
 
-# 擇一設定，絕不可把真實 key 放進 board.json、comment.json、版本庫、網址或聊天紀錄
-export PADLET_API_KEY='...'
-# 或：建立權限受限本機設定檔
-mkdir -p ~/.tw-edu-skills/padlet
-printf '%s' '{"apiKey":"..."}' > ~/.tw-edu-skills/padlet/config.json
-chmod 600 ~/.tw-edu-skills/padlet/config.json
-
-node scripts/preflight.mjs
-```
-
-前置檢查只回報金鑰是否存在，不會輸出金鑰。若失敗，請依 JSON 的 `hint` 修正；不要將 key 貼給 agent 或寫入教材資料。
-
-## 先預覽、再確認、最後寫入
-
-本工具沒有會連到外部服務的 dry-run。請使用下列唯讀命令作為安全預覽，再取得教師確認。任何寫入後，仍應到 Padlet 介面檢視呈現；這是驗證邊界，不能只看程式成功碼。
+參考 [Wildcard 指引與提示詞](references/wildcard-game-design.md) 和 [對應範例](assets/wildcard-alignment.example.json)：
 
 ```bash
-node scripts/api/get-board.mjs <board-id>
-node scripts/api/list-posts.mjs <board-id>
-node scripts/api/list-comments.mjs <board-id> <post-id>
+node scripts/tw-edtech-padlet.mjs wildcard-check --input assets/wildcard-alignment.example.json
 ```
 
-`board-id` 是看板網址結尾的識別碼。先確認看板名稱、目標貼文、學生名單與回饋文字。針對學生的個別建議應先給教師草稿審閱，不應直接發布。
+檢查器僅檢查結構與來源 ID，**不會讀取、上傳或理解教材，也不能證明平台已使用素材**。非同步生成逾時應先檢查既有任務，避免重複建立。
 
-## 建立貼文與看板
+## 既有 REST CLI
 
-`post.json` 範例：
+REST CLI 可在具備平台方案、API key 與授權時讀取看板、建立貼文／留言或使用 AI recipe；實際寫入需 `--confirm-write`。金鑰由使用者在本機正常設定，勿貼入教材、聊天或版本庫。指令與 API 專屬限制見 [CLI 使用手冊](references/cli-guide.md)；它不代表宿主 connector 或 Computer Use 的能力。
 
-```json
-{
-  "subject": "暖身討論",
-  "body": "請用一句話描述你對光合作用的理解。",
-  "section": "第一組"
-}
-```
+## 給 Agent 的指令範例
 
-確認後才執行：
+> 請依這份七年級教材設計 15 分鐘 Wildcard 情境遊戲，讓學生透過操作學習，列出素材與關卡對應並產生可提交的提示詞。
+
+教學 brief 範例可用下列命令檢查；結構通過不代表學科內容已經教師審核：
 
 ```bash
-node scripts/api/add-post.mjs <board-id> post.json --confirm-write
-node scripts/run.mjs board.json --board-id <board-id> --confirm-write
-
-# API 唯一的建板路徑：Padlet AI recipe。生成內容須由教師檢查。
-node scripts/run.mjs board.json --ai-prompt "國中自然：光合作用討論" --role teacher --confirm-write
+node scripts/tw-edtech-padlet.mjs lesson --input assets/lesson-brief-v1.example.json
 ```
 
-輸出中的 `ok:true`、`added` 與 `failed` 必須一起判讀。貼文會比對回傳內容的標題、本文與分欄；若出現 `post-write-verification-failed`，先開啟看板確認，絕不可直接重送。
+## 安裝與環境檢查
 
-## 教師留言
-
-留言僅接收純文字，工具會跳脫 HTML 特殊字元，避免將輸入當作網頁標記。單筆 `comment.json`：
-
-```json
-{ "text": "請補上資料來源，並說明你選擇此答案的理由。" }
-```
+需要 Node.js 18 以上；平台操作另依所選路徑需要網路、平台權限與使用者登入。沒有 connector 不會阻止本地教材設計或現有支援的匯入檔產生。
 
 ```bash
-# 先讀目前留言，確認對象與是否已留言
-node scripts/api/list-comments.mjs <board-id> <post-id>
-
-# 再進行真實寫入
-node scripts/api/add-comment.mjs <board-id> <post-id> comment.json --confirm-write
+git clone https://github.com/FW1201/tw-padlet-skill.git
+cd tw-padlet-skill
+npm ci --ignore-scripts
+node scripts/portable-core/agent-doctor.mjs --agent codex
 ```
 
-批次 `comments.json` 為陣列：
+`codex` 可改成 `claude`、`antigravity`、`opencode` 或 `other`。診斷檢查 Node、npm、作業系統、安裝位置與同名 Skill；它不會顯示憑證，也不會憑本機程序推定 connector、平台登入或權限可用。結果為 `unknown` 時，請在當前 Agent 中確認。
 
-```json
-[
-  { "postId": "post_A", "text": "請補上資料來源。" },
-  { "postId": "post_B", "text": "論點清楚，可再引用一項證據。" }
-]
-```
+### 安裝到 Agent 專案
+
+先將下列 `<既有專案目錄>` 換成實際路徑；安裝器先執行診斷，預設只預覽：
 
 ```bash
-node scripts/api/seed-comments.mjs <board-id> comments.json --confirm-write
+node scripts/portable-core/install.mjs --agent codex --project <既有專案目錄>
+node scripts/portable-core/install.mjs --agent codex --project <既有專案目錄> --apply --with-deps
 ```
 
-批次會一則一則送出，並跳過同一貼文中相同的既有留言與同批重複資料。建立後會核對回傳文字和所屬貼文。API 回應 429 時，工具立刻停止、不會自動重試，並回報 `retryAfterSeconds` 和已建立項目；等待後先重新列出留言，重新確認範圍，再以新的 `--confirm-write` 執行。
+其他 Agent 將 `codex` 換成對應名稱。同名目標預設拒絕覆蓋；升級時先預覽 `--upgrade`，確認目標後使用 `--upgrade --apply --with-deps`。舊版會備份至專案 `.edtech-skill-backups/`，準備依賴失敗時保留原版。安裝器僅處理專案 Skill，不會設定全域 MCP、登入或保證自動觸發。重新載入 Agent，確認實際讀取的 Skill 路徑。詳細修復與回復見 [跨 Agent 整合](references/portable-integration.md)。
 
-## 輸出與常見問題
+## Connector、MCP 與替代路徑
 
-所有命令輸出單行 JSON；只有 `ok:true` 才是可繼續的成功結果。
+本 Skill 優先評估當前宿主工具是否能完成指定任務，再依可用性選擇 connector、MCP、官方 API、CLI、Computer Use 或人工匯入。工具路由需要本次實際的能力與權限證據；CLI 本身不能直接呼叫 Codex 的內建 connector。呼叫失敗、逾時或回應不明時會與成功分開處理，不自動重送可能已寫入的動作。
 
-| 回應 | 意義與下一步 |
-|---|---|
-| `confirmation-required` | 尚未取得本次外部寫入確認；核對後加上 `--confirm-write`。 |
-| `rate-limited` | 已停止，沒有自動重試；等待 `retryAfterSeconds` 後先唯讀檢查。 |
-| `comment-write-verification-failed` | 回傳內容或所屬貼文不符，先到 Padlet 手動確認。 |
-| `post-write-verification-failed` | 回傳貼文和原輸入不符，禁止盲目重送。 |
-| `post-not-on-board` | 提供的貼文不在確認的看板中；未寫入，先用 `list-posts` 核對。 |
-| 401／403／`MissingCredential` | API key 不存在、無效或無權限；設定／權限由教師管理，勿外洩 key。 |
+四平台另有獨立的 MCP Skills 套件，提供 Skill 入口及參考資源；它不附帶平台 connector，不代表宿主會自動啟用 Skill。MCP 套件並非本儲存庫的一部分；需取得其獨立發佈檔再配置。
 
-## 維護與重新驗證
+## 相容性與驗證狀態
 
-平台 API 可能變動。維護者更新時應先下載／閱讀當日 Padlet 官方 API 文件，確認 JSON:API 欄位、`POST /posts/{post_hashid}/comments` 的 `htmlContent`、回傳 comment 的 `relationships.post`，再更新測試。執行：
+| Agent | 目前證據 | 尚待確認 |
+|---|---|---|
+| Codex | 曾以明確指名在新對話讀取四個 Skill；一般 MCP 清單與讀取工具曾測試 | 自動觸發、各帳號及所有平台操作不保證 |
+| OpenCode | 曾在新對話測試 Padlet Skill 的明確指名與自然語句載入 | 本 Skill 各版本及 connector 路徑未逐一實測 |
+| Claude Code | 本機已安裝，當時 OAuth 工作階段過期 | 登入後載入、新對話與工具路徑待實測 |
+| Antigravity | 本機已安裝並確認 CLI 版本 | 技能載入及工具路徑待實測 |
+| Grok Bot | 已納入可攜式設計考量 | 雲端安裝、執行與 MCP 相容性未實測 |
+
+平台方案、介面、權限與工具可能變動。各模式已觀察範圍見 [平台模式](references/platform-modes.md) 與 [驗證紀錄](references/release-validation.md)；不把單次範例延伸成所有功能已驗證。
+
+## 維護與測試
 
 ```bash
 npm test
-for f in scripts/lib/*.mjs scripts/api/*.mjs scripts/*.mjs; do node --check "$f"; done
 git diff --check
 ```
 
-這些測試全以 mock API 執行，不會寫入 Padlet。實際平台驗證必須另行取得教師同意，使用一次性測試內容並保持未發布／未指派狀態。
+自動化測試不登入、不代替平台成果的人工審查。詳細既有命令、格式與疑難排解見 [CLI 使用手冊](references/cli-guide.md)；平台與 API 使用均依授權及各平台當前條件。不要將密碼、API key、Cookie 或不必要的學生資料放進教材、日誌或版本庫。
 
-## 授權
+## 四平台專案
 
-MIT
+[Wordwall](https://github.com/FW1201/tw-wordwall-skill) · [Padlet](https://github.com/FW1201/tw-padlet-skill) · [Wayground](https://github.com/FW1201/tw-wayground-skill) · [Kahoot](https://github.com/FW1201/tw-kahoot-skill)
 
-## CLI 控制與下一輪錄製
-
-```bash
-tw-edtech-padlet doctor
-tw-edtech-padlet validate --input board.json
-tw-edtech-padlet plan --action post.create --resource <board-id>
-```
-
-貼文與留言仍優先使用官方 API；空白看板、版面、欄位、公開／分享、指派、成果與刪除改由下一輪 Canary 錄製建立 action map。API key 不得錄製或輸入 CLI 參數。所有寫入均以 `--confirm-write` 為第一道確認；公開、分享、批次、學生資料及刪除另需計畫碼與高風險確認。
-
-## 跨 Agent 安裝診斷
-
-安裝前執行 `node scripts/portable-core/agent-doctor.mjs --agent codex`，其他 Agent 可替換為 `claude`、`antigravity`、`opencode` 或 `other`。診斷結果中的 unknown 需在實際 Agent 與平台確認；詳見 [跨 Agent 指引](references/portable-integration.md)。核心只提供診斷和路由建議，不會自動安裝、登入或執行平台操作。
-
-### 專案範圍安裝
-
-執行 `node scripts/portable-core/install.mjs --agent codex --project <專案目錄>` 預覽；確認結果後加 `--apply`，將完整 Skill 複製到該 Agent 專案技能目錄。已有同名 Skill 時停止，絕不覆蓋；需要同時安裝套件時加 `--with-deps`，使用 `npm ci --ignore-scripts`；完成後重新載入 Agent 並檢查技能發現。安裝器不修改 MCP 設定或登入。
-
-使用 `tw-edtech-padlet runtime --inventory inventory.json` 將本次 Agent 發現的工具與替代能力送入 CLI，回報動作路由；此命令唯讀，不會替宿主呼叫 connector。工具可見不代表帳號權限已驗證。
-
-### Wildcard 教材契合檢查
-
-依 [設計指引](references/wildcard-game-design.md) 整理教材來源片段、目標、操作與回饋，參考 `assets/wildcard-alignment.example.json`，執行 `node scripts/tw-edtech-padlet.mjs wildcard-check --input assets/wildcard-alignment.example.json`。此檢查不會讀取或上傳原始素材，不能證明平台已讀到內容；請以介面與生成結果核對。
-
-專案既有 Skill 的安全升級及回復指引見 [跨 Agent 整合](references/portable-integration.md#專案安裝與升級)。
+MIT License
