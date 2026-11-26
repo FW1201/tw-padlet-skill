@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Board } from "./lib/models.mjs";
+import { runLessonCommand } from "./portable-core/lesson-command.mjs";
+import { runRuntimeCommand } from "./portable-core/runtime-command.mjs";
 import { runEdtechCli } from "./lib/edtech-cli.mjs";
 import { guardStudentRosterPlan } from "./lib/student-roster-plan.mjs";
 
@@ -20,7 +22,15 @@ const missingCommentTarget = () => {
   const postIndex = args.indexOf("--post");
   return command === "run" && args[args.indexOf("--action") + 1] === "comment.create" && !(postIndex >= 0 && args[postIndex + 1]);
 };
-if (await guardStudentRosterPlan({ platform: "padlet", root })) {
+if (process.argv[2] === "lesson") {
+  const report = await runLessonCommand(process.argv.slice(3));
+  console.log(JSON.stringify(report));
+  if (!report.ok) process.exitCode = 1;
+} else if (process.argv[2] === "runtime") {
+  const report = await runRuntimeCommand("padlet", process.argv.slice(3));
+  console.log(JSON.stringify(report));
+  if (!report.ok) process.exitCode = 1;
+} else if (await guardStudentRosterPlan({ platform: "padlet", root })) {
   // The guard emitted a roster-bound plan or a fail-closed diagnostic.
 } else if (missingCommentTarget()) {
   console.log(JSON.stringify({ ok: false, error: "post-required", hint: "建立留言前必須以 --post 指定目標貼文；不會嘗試任何外部寫入。", externalWriteAttempted: false }));

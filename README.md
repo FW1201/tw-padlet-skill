@@ -140,3 +140,13 @@ tw-edtech-padlet plan --action post.create --resource <board-id>
 ```
 
 貼文與留言仍優先使用官方 API；空白看板、版面、欄位、公開／分享、指派、成果與刪除改由下一輪 Canary 錄製建立 action map。API key 不得錄製或輸入 CLI 參數。所有寫入均以 `--confirm-write` 為第一道確認；公開、分享、批次、學生資料及刪除另需計畫碼與高風險確認。
+
+## 跨 Agent 安裝診斷
+
+安裝前執行 `node scripts/portable-core/agent-doctor.mjs --agent codex`，其他 Agent 可替換為 `claude`、`antigravity`、`opencode` 或 `other`。診斷結果中的 unknown 需在實際 Agent 與平台確認；詳見 [跨 Agent 指引](references/portable-integration.md)。核心只提供診斷和路由建議，不會自動安裝、登入或執行平台操作。
+
+### 專案範圍安裝
+
+執行 `node scripts/portable-core/install.mjs --agent codex --project <專案目錄>` 預覽；確認結果後加 `--apply`，將完整 Skill 複製到該 Agent 專案技能目錄。已有同名 Skill 時停止，絕不覆蓋；需要同時安裝套件時加 `--with-deps`，使用 `npm ci --ignore-scripts`；完成後重新載入 Agent 並檢查技能發現。安裝器不修改 MCP 設定或登入。
+
+使用 `tw-edtech-padlet runtime --inventory inventory.json` 將本次 Agent 發現的工具與替代能力送入 CLI，回報動作路由；此命令唯讀，不會替宿主呼叫 connector。工具可見不代表帳號權限已驗證。

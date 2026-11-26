@@ -1,17 +1,33 @@
 ---
 name: tw-padlet-skill
-description: Use when teachers need to inspect a Padlet board, seed approved posts, or add teacher feedback through Padlet's official REST API, especially when API-key safety, duplicate comments, rate limits, or an explicit external-write confirmation are required.
+description: Design and create Padlet boards, Sandbox collaboration, Arcade activities, or Wildcard games using available connectors, official API, or browser workflows; verify content and sharing.
 ---
+
+## Codex connector 實作路徑
+
+在目前 Agent 工具清單中發現並直接使用平台 connector；先讀工具描述與實際 schema，不依 CLI 推測支援。Padlet connector 可建立白板與 Arcade 配對遊戲；Wayground connector 可建立選擇題與閃卡草稿。每次建立後讀回或以平台編輯頁核對，呈現資源連結和實際存取狀態；connector 能力與 REST CLI 的限制須分開描述。未在工具清單發現功能時，依既有匯入或 Computer Use 流程處理。
+
+使用平台特有模式時，先查閱 [模式與驗證指引](references/platform-modes.md)。以 [教學 brief 範例](assets/lesson-brief-v1.example.json) 定義年級、來源、目標、活動、時間和玩家回饋；用既有 CLI 的 `lesson --input <brief.json>` 檢查時間及來源關聯，結果不取代教師審查。
+
+## Wildcard：以玩家行動設計
+
+處理 Wildcard 時，必讀 [Wildcard 情境遊戲設計與驗收](references/wildcard-game-design.md)：把教材轉成玩家身分、核心操作、可見狀態、選擇後果、回饋與重試，依素材填寫可直接提交的提示詞；除非使用者指定測驗，不以連續答題代替遊戲循環。建立後實際試玩並逐項回報已驗證及未測內容。
+
+## 跨 Agent 環境與工具發現
+
+首次安裝前及需要外部平台操作前，執行 `node scripts/portable-core/agent-doctor.mjs --agent codex`；可將 codex 換為 claude、antigravity、opencode 或 other。診斷不會讀出或測試金鑰；unknown 不是可用。依診斷提示與當前 Agent 工具清單檢查 connector/MCP、權限、瀏覽器與登入，不能由本機 CLI 是否存在推論工具可用。詳見 [跨 Agent 與模式指引](references/portable-integration.md)。
+
+連接器與 MCP 路徑僅在當前工具庫確認操作、權限與使用者需求後使用；使用具體工具前確認其參數及輸出。原有下方 CLI 與人工流程、品質檢查及外部寫入限制仍適用於原工具；不能宣稱未測試的工具路徑已完成。完成後讀回並區分草稿、發布及分享狀態。
 
 # Padlet 教師看板 API
 
-本 Skill 僅使用 Padlet 官方 REST API；不使用瀏覽器自動化、不登入、不發布、不調整分享權限。核心原則是：先讀取與確認，只有老師明確確認後才以 `--confirm-write` 寫入。
+既有腳本路徑使用 Padlet 官方 REST API；Codex 等 Agent 若提供 Padlet connector，可依工具清單另行使用其支援的功能。既有 API CLI 的外部寫入仍須遵循 `--confirm-write` 與既有核對規則。
 
 ## 使用時機與限制
 
 - 適用：讀取既有看板／貼文、在既有貼文加入教師留言、批次種貼文，或用 Padlet AI recipe 建立新看板。
-- 不適用：建立指定版面或空白看板、建立欄位、設定訪客權限、匯出、指派或發布；請教師直接在 padlet.com 完成。
-- 需要付費方案的 `PADLET_API_KEY`。金鑰只能置於環境變數或 `~/.tw-edu-skills/padlet/config.json`（`chmod 600`）；不可放入 JSON、提示詞、網址、輸出或紀錄。
+- 既有 REST 腳本不提供建立指定版面或空白看板、欄位及分享設定；這些功能若由目前 Agent 的 Padlet connector 提供，可按實際工具能力操作並讀回。
+- 僅在既有 REST API 腳本路徑需要 `PADLET_API_KEY`（依帳號方案確認）；使用 Agent connector 不應預設需要這把 key。該金鑰只能置於環境變數或 `~/.tw-edu-skills/padlet/config.json`（`chmod 600`）；不可放入 JSON、提示詞、網址、輸出或紀錄。
 
 ## 錄製後的 API 動作
 
@@ -19,7 +35,9 @@ description: Use when teachers need to inspect a Padlet board, seed approved pos
 
 ## 固定工作流
 
-1. 先請教師確認看板、貼文、留言對象與文字；涉及學生個人回饋時，先提供草稿而不是直接寫入。
+以下是既有 REST CLI 路徑；connector 路徑依本次工具 schema 及使用者授權執行。
+
+1. 先確認看板、貼文、留言對象與文字；涉及學生個人回饋時，先提供草稿而不是直接寫入。
 2. 執行 `node scripts/preflight.mjs`，再用 `get-board`、`list-posts` 或 `list-comments` 檢查目標。這些是唯讀操作。
 3. 顯示將寫入的內容與範圍，取得本次明確同意。
 4. 寫入命令必須加入 `--confirm-write`。沒有此旗標時，程式會在讀檔、讀取金鑰和網路請求前停止。
