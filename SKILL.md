@@ -11,7 +11,7 @@ description: Design and create Padlet boards, Sandbox collaboration, Arcade acti
 
 ## Wildcard：以玩家行動設計
 
-處理 Wildcard 時，必讀 [Wildcard 情境遊戲設計與驗收](references/wildcard-game-design.md)：把教材轉成玩家身分、核心操作、可見狀態、選擇後果、回饋與重試，先建立教材片段、學習目標與關卡的對應表，分別核對 Agent 讀取、平台附件與遊戲呈現；依素材填寫可直接提交的提示詞，必要時執行 `wildcard-check --input <對應表.json>` 檢查來源結構；除非使用者指定測驗，不以連續答題代替遊戲循環。建立後實際試玩並逐項回報已驗證及未測內容。
+處理 Wildcard 時，必讀 [Wildcard 情境遊戲設計與驗收](references/wildcard-game-design.md)：把教材轉成玩家身分、核心操作、可見狀態、選擇後果、回饋與重試，先建立教材片段、學習目標與關卡的對應表，分別核對 Agent 讀取、平台附件與遊戲呈現；依素材填寫可直接提交的提示詞，必要時執行 `wildcard-check --input <對應表.json>` 檢查來源結構；除非使用者指定測驗，不以連續答題代替遊戲循環。建立後確認生成完成，核對教材與設計的對應及可見內容，並分別回報已驗證與未測項目；依使用者指定範圍決定是否試玩，不反覆測試遊戲機制。
 
 ## 跨 Agent 環境與工具發現
 

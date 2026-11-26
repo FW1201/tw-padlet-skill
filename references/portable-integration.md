@@ -4,7 +4,7 @@
 
 Agent 提供 connector/MCP 時，根據本次任務檢查動作、參數、使用者帳戶和平台權限。官方 API、既有 CLI、Computer Use、人工匯入是依實際可用性選擇的替代路徑。`router.mjs` 只選擇明確標記 available 且 action 相符的路徑；呼叫端必須先取得實際能力證據，它不會自行偵測或呼叫工具。
 
-分別處理看板、Sandbox、Arcade 與 Wildcard。Wildcard 規格包含素材、年級、玩家動作、目標、回饋與完成條件；非同步生成後讀回並試玩。既有 REST CLI 並不等於 connector 的能力。
+分別處理看板、Sandbox、Arcade 與 Wildcard。Wildcard 規格包含素材、年級、玩家動作、目標、回饋與完成條件；非同步生成後讀回可見結果及素材對應；試玩依使用者需求進行。既有 REST CLI 並不等於 connector 的能力。
 
 完成狀態必須有平台讀回證據；生成中、超時、部分成功或狀態不明不能報為完成。只在使用者授權範圍內進行寫入，勿將憑證或學生資料放入日誌。
 
