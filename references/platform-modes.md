@@ -7,3 +7,5 @@
 - 公開與訪客角色獨立核對：未列出不代表僅自己可見。
 
 官方來源：https://padlet.help/l/en/article/5wzjc3tuk2 （2026-11-26）；Sandbox 和 Arcade matching 曾 connector 建立讀回，matching 四題實玩正確；Wildcard 已用公開教材連結建立三關方程式平衡遊戲，初版測試錯誤提示、三關與重玩；第二關修正為兩側各除以二後再次三關通關。公開連結是否可跨帳號開啟須另驗。
+
+2026-11-26 新版提示詞實測：太空貨運平衡站修復任務 https://arcade.padlet.com/game/kK4AvB8lrl 第一版完成三關、錯誤復原、拖曳及點擊、重玩和代入驗算；合法多步解法仍被扣分，已提出修正，修改結果須另行實測。玩家名稱 Alex 為模擬測試。
