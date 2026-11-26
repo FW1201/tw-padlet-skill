@@ -1,0 +1,6 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {validateWildcardAlignment} from '../scripts/wildcard-alignment.mjs';
+const example=JSON.parse(await readFile(new URL('../assets/wildcard-alignment.example.json',import.meta.url),'utf8'));
+test('teacher source is traceable to game action and feedback',()=>{const r=validateWildcardAlignment(example);assert.equal(r.ok,true);assert.deepEqual(r.warnings,[])});
+test('unknown source segment fails rather than inventing a connection',()=>{const x=structuredClone(example);x.gameElements[0].segmentIds=['missing'];assert.match(validateWildcardAlignment(x).errors.join(),/unknown id/)});
+test('unread or unattached material is explicitly uncertain',()=>{const x=structuredClone(example);Object.assign(x.sources[0],{type:'file',extractionStatus:'partial',attachmentStatus:'unknown'});const r=validateWildcardAlignment(x);assert.equal(r.ok,true);assert.equal(r.warnings.length,2);assert.match(r.warnings.join(),/do not claim/)});
+test('requires actual mapping, player action and feedback',()=>{const x=structuredClone(example);x.gameElements[0].segmentIds=[];x.playerAction='';x.gameElements[0].feedback='';const r=validateWildcardAlignment(x);assert.equal(r.ok,false);assert.ok(r.errors.length>=3)});

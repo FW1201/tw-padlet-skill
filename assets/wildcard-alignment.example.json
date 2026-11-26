@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "grade": "國中七年級",
+  "learningObjective": "以等量操作求解並代入檢驗一元一次方程式",
+  "playerAction": "選取等量操作卡調整兩側貨物",
+  "stateChange": "同步顯示天平與算式改變",
+  "feedback": "錯誤操作解釋等量原則並可復原",
+  "completion": "完成平衡後代入原式檢驗",
+  "sources": [{
+    "id": "s1", "title": "教師自編示範文字", "type": "teacher_text",
+    "extractionStatus": "verified", "attachmentStatus": "not_applicable",
+    "segments": [{"id": "s1a", "locator": "示範例題一", "summary": "x + 3 = 7，兩側各減 3 得 x = 4，代入原式成立。"}]
+  }],
+  "gameElements": [{
+    "name": "平衡貨艙第一關", "segmentIds": ["s1a"],
+    "instruction": "兩側維持等重，讓 x 單獨留下。", "playerAction": "兩側各減 3", "feedback": "呈現 x = 4 並代入檢驗。"
+  }]
+}

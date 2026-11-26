@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
+import { validateWildcardAlignment } from "./wildcard-alignment.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Board } from "./lib/models.mjs";
@@ -22,7 +23,14 @@ const missingCommentTarget = () => {
   const postIndex = args.indexOf("--post");
   return command === "run" && args[args.indexOf("--action") + 1] === "comment.create" && !(postIndex >= 0 && args[postIndex + 1]);
 };
-if (process.argv[2] === "lesson") {
+if (process.argv[2] === "wildcard-check") {
+  const index=process.argv.indexOf("--input");
+  try {
+    if(index<0 || !process.argv[index+1]) throw new Error("--input <json> is required");
+    const report=validateWildcardAlignment(JSON.parse(await readFile(process.argv[index+1],"utf8")));
+    console.log(JSON.stringify(report)); if(!report.ok) process.exitCode=1;
+  } catch(e) {console.log(JSON.stringify({ok:false,error:String(e.message)}));process.exitCode=1;}
+} else if (process.argv[2] === "lesson") {
   const report = await runLessonCommand(process.argv.slice(3));
   console.log(JSON.stringify(report));
   if (!report.ok) process.exitCode = 1;
